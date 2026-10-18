@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vercel build output (deploy artifacts, not source):
+    ".vercel/**",
+    // Static assets shipped verbatim (self-hosted MediaPipe wasm glue is
+    // minified Emscripten output, not lintable source):
+    "public/**",
   ]),
 ]);
 

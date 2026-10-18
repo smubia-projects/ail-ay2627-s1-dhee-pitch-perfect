@@ -1,0 +1,133 @@
+import { NextResponse } from "next/server";
+
+import { GEMINI_MODEL, generateWithRetry, getGeminiClient } from "@/lib/gemini";
+import {
+  GENERATE_QUESTIONS_SCHEMA,
+  type GeneratedQuestions,
+  type QuestionGenerationInput,
+} from "@/lib/interview";
+import { MAX_RUBRIC_CHARS, MAX_SLIDE_CHARS, trimForPrompt } from "@/lib/presentation";
+
+export const runtime = "nodejs";
+
+/** Company-news context shares the slide-text size budget. */
+const MAX_COMPANY_NEWS_CHARS = MAX_SLIDE_CHARS;
+
+export async function POST(request: Request) {
+  let body: QuestionGenerationInput;
+  try {
+    body = (await request.json()) as QuestionGenerationInput;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const jobDescription = (body.jobDescription ?? "").trim();
+  const resume = (body.resume ?? "").trim();
+  const targetRole = (body.targetRole ?? "").trim();
+  const companyNews = (body.companyNews ?? "").trim();
+
+  if (!jobDescription && !resume && !targetRole) {
+    return NextResponse.json(
+      { error: "Provide a job description, resume, or target role." },
+      { status: 400 },
+    );
+  }
+  if (jobDescription.length > MAX_RUBRIC_CHARS) {
+    return NextResponse.json(
+      { error: `Job description exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
+      { status: 400 },
+    );
+  }
+  if (resume.length > MAX_RUBRIC_CHARS) {
+    return NextResponse.json(
+      { error: `Resume exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
+      { status: 400 },
+    );
+  }
+
+  console.info(
+    `[agent:interview-generate] step=received role="${targetRole || "(derive)"}" jdChars=${jobDescription.length} resumeChars=${resume.length} companyNewsChars=${companyNews.length}`,
+  );
+
+  let ai;
+  try {
+    ai = getGeminiClient(process.env.GEMINI_API_KEY);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Gemini is not configured." },
+      { status: 503 },
+    );
+  }
+
+  const sections = [
+    `You are an expert technical recruiter and interview coach generating questions for a mock interview.
+
+TASK
+Produce EXACTLY 5 interview questions for the target role, tailored to the job description and resume below.
+
+REQUIREMENTS
+- Questions must be realistic things a hiring manager for this role would actually ask (mix behavioral, role-specific, and one strategic/company-aware question when company news is provided).
+- Cover a spread of competencies (no two questions probe the same competency).
+- Each question needs a "competency" (primary skill judged) and "starPointers" telling the candidate what a STRONG STAR answer must include:
+  • situation — the context a brief (1–2 sentence) Situation should establish;
+  • task — the responsibility/Goal the Task must make explicit;
+  • action — the personal actions and active verbs the Action should demonstrate (prefer first-person ownership);
+  • result — the measurable outcome a convincing Result must prove.
+- ids must be exactly "q1"…"q5" in order.
+- "role" echoes the target role (derive it from the job description title if not given).
+- "summary" is 1–2 sentences describing the set's focus.
+
+OUTPUT: JSON only matching the provided schema.`,
+    `TARGET ROLE:\n${targetRole || "(derive from the job description)"}`,
+    `JOB DESCRIPTION:\n${jobDescription ? trimForPrompt(jobDescription, MAX_RUBRIC_CHARS) : "(not provided)"}`,
+    `RESUME:\n${resume ? trimForPrompt(resume, MAX_RUBRIC_CHARS) : "(not provided)"}`,
+    `COMPANY NEWS / PRESS RELEASE CONTEXT:\n${companyNews ? trimForPrompt(companyNews, MAX_COMPANY_NEWS_CHARS) : "(none provided — skip the company-aware question and leave alignment out)"}`,
+  ];
+
+  try {
+    const prompt = sections.join("\n\n");
+    console.info(
+      `[agent:interview-generate] step=calling-gemini model=${GEMINI_MODEL} promptChars=${prompt.length}`,
+    );
+    const result = await generateWithRetry(() =>
+      ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.4,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+          responseSchema: GENERATE_QUESTIONS_SCHEMA,
+        },
+      }),
+    );
+    const parsed = JSON.parse(result.text ?? "") as GeneratedQuestions;
+
+    const questions: GeneratedQuestions = {
+      role: typeof parsed.role === "string" ? parsed.role : targetRole,
+      summary: typeof parsed.summary === "string" ? parsed.summary : "",
+      questions: Array.isArray(parsed.questions)
+        ? parsed.questions.slice(0, 5).filter((q) => q && typeof q.question === "string")
+        : [],
+    };
+    if (questions.questions.length === 0) {
+      return NextResponse.json(
+        { error: "Model returned no questions — try adding a job description." },
+        { status: 502 },
+      );
+    }
+
+    console.info(
+      `[agent:interview-generate] step=questions-generated count=${questions.questions.length} role="${questions.role}"`,
+    );
+    return NextResponse.json(questions);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Question generation failed.";
+    console.error(`[agent:interview-generate] step=failed error="${message.slice(0, 200)}"`);
+    return NextResponse.json(
+      { error: `Gemini question generation failed: ${message}` },
+      { status: 502 },
+    );
+  }
+}
+

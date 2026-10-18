@@ -1,26 +1,362 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Times New Roman serif everywhere: body, inputs, headings, titles */
+  --font-sans: var(--font);
+  --font-heading: var(--font);
+  --font-display: var(--font);
+  --font-mono: var(--font);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* Mane — pastel orange → brown ramp: 50/100/200/300 are the pastel
+     surfaces (page, peach, hero, highlight), 700 is the brown action
+     color, 900 the dark brown ink. White text only sits on 600+. */
+  --color-iris-50: #fffaf5;
+  --color-iris-100: #ffe8d2;
+  --color-iris-200: #ffd9b8;
+  --color-iris-300: #ffc499;
+  --color-iris-400: #efab7b;
+  --color-iris-500: #d18f5f;
+  --color-iris-600: #9a6240;
+  --color-iris-700: #8b5a3c;
+  --color-iris-800: #6e4630;
+  --color-iris-900: #4a2e1c;
+  --color-iris-950: #38220f;
+
+  /* Ink — the warm espresso text ramp (ink-600 matches --muted-foreground). */
+  --color-ink-50: #faf6f0;
+  --color-ink-100: #f3ece2;
+  --color-ink-200: #e6d9c8;
+  --color-ink-300: #d3c0a8;
+  --color-ink-400: #ad9a80;
+  --color-ink-500: #8a7860;
+  --color-ink-600: #6d5d49;
+  --color-ink-700: #55483a;
+  --color-ink-800: #3d3227;
+  --color-ink-900: #2a2118;
+  --color-ink-950: #1a140e;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  @keyframes shimmer-slide {
+    to {
+      transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+  @keyframes spin-around {
+    0% {
+      transform: translateZ(0) rotate(0);
+    }
+    15%,
+    35% {
+      transform: translateZ(0) rotate(90deg);
+    }
+    65%,
+    85% {
+      transform: translateZ(0) rotate(270deg);
+    }
+    100% {
+      transform: translateZ(0) rotate(360deg);
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------------------------------------------------------------------------
+ * Pastel orange + brown theme tokens.
+ * ------------------------------------------------------------------------ */
+:root {
+  /* Flat pastel page — no saturated gradient. */
+  --background: #fff4ea;
+  --foreground: #4a2e1c;
+  --card: #fffaf5;
+  --card-glass: rgba(255, 250, 245, 0.72);
+  --primary: #8b5a3c;
+  --primary-foreground: #fff4ea;
+  --primary-soft: #ffd9b8;
+  --secondary: #ffd9b8;
+  --secondary-foreground: #4a2e1c;
+  --accent: #ffc499;
+  --accent-foreground: #4a2e1c;
+  --peach-soft: #ffe8d2;
+  --mint-soft: #dcf5e8;
+  --text: #4a2e1c;
+  --muted: #ffe8d2;
+  --muted-foreground: #6d5d49;
+  --border: #e8c4a0;
+  --input: #e8c4a0;
+  --ring: #8b5a3c;
+  --radius-card: 0rem;
+  --radius-pill: 0rem;
+  --shadow: 0 10px 30px rgba(139, 90, 60, 0.15);
+  --font: "Times New Roman", Times, serif;
+
+  /* shadcn theme mapping onto the tokens above */
+  --radius: 0rem; /* sharp corners everywhere */
+  --popover: #fffaf5;
+  --popover-foreground: #4a2e1c;
+  --destructive: oklch(0.577 0.245 27.325);
+  --chart-1: #8b5a3c;
+  --chart-2: #c98a5e;
+  --chart-3: #e8a878;
+  --chart-4: #ffc499;
+  --chart-5: #ffd9b8;
+  --sidebar: #fffaf5;
+  --sidebar-foreground: #4a2e1c;
+  --sidebar-primary: #8b5a3c;
+  --sidebar-primary-foreground: #fff4ea;
+  --sidebar-accent: #ffd9b8;
+  --sidebar-accent-foreground: #4a2e1c;
+  --sidebar-border: #e8c4a0;
+  --sidebar-ring: #8b5a3c;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Flat pastel page: cream-orange background, dark brown text. */
+  body {
+    background: var(--background);
+    font-family: var(--font);
+    color: var(--text);
+  }
+  html {
+    font-family: var(--font);
+  }
+  /* Times New Roman for every heading. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Sharp-cornered buttons (radius from --radius-pill = 0rem):
+ *   · subtle scale-up  → transform: scale(1.03)
+ *   · soft shadow lift → --shadow (0 10px 30px rgba(139, 90, 60, 0.15))
+ * Un-layered so they win over utility transitions; inline transforms
+ * (framer-motion) still take precedence where components animate themselves.
+ * ------------------------------------------------------------------------ */
+button:not(:disabled) {
+  border-radius: var(--radius-pill);
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    filter 0.22s ease;
+}
+button:not(:disabled):hover {
+  transform: scale(1.03);
+  box-shadow: var(--shadow);
+}
+button:not(:disabled):active {
+  transform: scale(0.98);
+}
+button:not(:disabled):focus-visible {
+  box-shadow:
+    var(--shadow),
+    0 0 0 3px rgba(139, 90, 60, 0.4);
+}
+
+/* Inputs are sharp-cornered like everything else. */
+[data-slot="input"],
+[data-slot="textarea"],
+select,
+textarea {
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------------------------
+ * Sharp cream cards: no radius, soft warm shadow, no hard borders.
+ * Un-layered so they override the ring/border utilities on every card
+ * across Home, Presentation, Interview, and Analytics at once.
+ * ------------------------------------------------------------------------ */
+[data-slot="card"] {
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+/* Pastel icon tiles: the first icon in a card title becomes a pastel
+ * orange tile instead of a bare outline icon (sharp corners). */
+[data-slot="card-title"] > svg:first-child {
+  box-sizing: content-box;
+  padding: 7px;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+[data-slot="card-title"] > svg:first-child[data-tile="peach"] {
+  background: var(--peach-soft);
+}
+[data-slot="card-title"] > svg:first-child[data-tile="mint"] {
+  background: var(--mint-soft);
+}
+
+/* Option cards (home screen): cream, sharp, soft brown lift on hover. */
+.option-card {
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.option-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 18px 40px rgba(139, 90, 60, 0.22);
+}
+
+/* ---------------------------------------------------------------------------
+ * Surface utilities
+ * ------------------------------------------------------------------------ */
+
+/* Soft white card (speech bubbles, notes). */
+.card-fresh {
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+/* Frosted white glass (top nav). */
+.glass-fresh {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 6px 24px rgba(139, 90, 60, 0.14);
+}
+
+/* Soft warm hairline accent (kept for highlight panels). */
+.ink-border {
+  border: 1px solid var(--border);
+}
+.ink-glow {
+  box-shadow: 0 12px 42px -14px rgba(139, 90, 60, 0.45);
+}
+.ink-text {
+  color: var(--primary);
+}
+
+/* Big bold score numbers, like the reference balance. */
+.score-big {
+  font-family: var(--font);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mane the lion blink: quick eye close every few seconds. */
+@keyframes lion-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.08);
+  }
+}
+
+.lion-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lion-blink 4.2s ease-in-out infinite;
+}
+
+/* Gentle float for the mascot. */
+@keyframes mascot-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.mascot-float {
+  animation: mascot-float 4s ease-in-out infinite;
+}
+
+/* Bounce on mascot tap — direct interaction feedback. */
+@keyframes mascot-tap {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.12) rotate(-3deg);
+  }
+  70% {
+    transform: scale(0.96) rotate(2deg);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.mascot-tap {
+  animation: mascot-tap 0.55s ease-in-out;
+}
+
+/* Donut score rings draw themselves in. */
+@keyframes donut-draw {
+  from {
+    stroke-dashoffset: var(--donut-length, 0);
+  }
+}
+
+.donut-ring {
+  animation: donut-draw 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
 }
