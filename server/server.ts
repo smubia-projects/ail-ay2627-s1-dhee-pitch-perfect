@@ -1,5 +1,6 @@
 import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
+import { limitEvaluate, limitGenerateQuestions, limitParseRubric, limitScore } from "./rateLimit";
 import { evaluateHandler } from "./routes/evaluate";
 import { generateQuestionsHandler } from "./routes/generate-questions";
 import { parseRubricHandler } from "./routes/parse-rubric";
@@ -11,10 +12,10 @@ import { scoreHandler } from "./routes/score";
  * MediaPipe telemetry and Web Speech captions stay in the browser.
  *
  *   GET  /api/health                        -> {"status":"ok"}
- *   POST /api/score                         -> score one interview answer / presentation run
- *   POST /api/interview/generate-questions  -> 5 tailored questions with STAR pointers
- *   POST /api/presentation/evaluate         -> point-by-point presentation scorecard
- *   POST /api/presentation/parse-rubric     -> rubric (+ optional PDF slides) -> structured rubric
+ *   POST /api/score                         -> score one interview answer / presentation run  [rate limited: score]
+ *   POST /api/interview/generate-questions  -> 5 tailored questions with STAR pointers       [rate limited: generate_questions]
+ *   POST /api/presentation/evaluate         -> point-by-point presentation scorecard         [rate limited: evaluate]
+ *   POST /api/presentation/parse-rubric     -> rubric (+ optional PDF) -> structured rubric  [rate limited: parse_rubric]
  */
 
 const app = express();
@@ -43,10 +44,10 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/api/score", json, scoreHandler);
-app.post("/api/interview/generate-questions", json, generateQuestionsHandler);
-app.post("/api/presentation/evaluate", json, evaluateHandler);
-app.post("/api/presentation/parse-rubric", jsonWithPdf, parseRubricHandler);
+app.post("/api/score", json, limitScore, scoreHandler);
+app.post("/api/interview/generate-questions", json, limitGenerateQuestions, generateQuestionsHandler);
+app.post("/api/presentation/evaluate", json, limitEvaluate, evaluateHandler);
+app.post("/api/presentation/parse-rubric", jsonWithPdf, limitParseRubric, parseRubricHandler);
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found. This is the Pitch Perfect API; the app itself is on the frontend." });
