@@ -23,7 +23,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Build context = repo root (Dockerfile bundles server/ + lib/ with esbuild).
+      # Build context = repo root (Dockerfile bundles server/ + src/lib/ with esbuild).
       - name: Build and push image to Docker Hub
         run: |
           REPO="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${SERVICE_NAME}"
