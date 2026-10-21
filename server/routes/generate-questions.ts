@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+/** POST /api/interview/generate-questions — JSON: { targetRole, jobDescription, resume, companyNews }. Returns 5 STAR-guided questions. */
+
+import type { Request, Response } from "express";
 
 import {
   chatCompletion,
@@ -13,18 +15,12 @@ import {
 } from "@/lib/interview";
 import { MAX_RUBRIC_CHARS, MAX_SLIDE_CHARS, trimForPrompt } from "@/lib/presentation";
 
-export const runtime = "nodejs";
-
 /** Company-news context shares the slide-text size budget. */
 const MAX_COMPANY_NEWS_CHARS = MAX_SLIDE_CHARS;
 
-export async function POST(request: Request) {
-  let body: QuestionGenerationInput;
-  try {
-    body = (await request.json()) as QuestionGenerationInput;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+export async function generateQuestionsHandler(req: Request, res: Response) {
+  // express.json() has already parsed (and size-capped) the body.
+  const body = (req.body ?? {}) as QuestionGenerationInput;
 
   const jobDescription = (body.jobDescription ?? "").trim();
   const resume = (body.resume ?? "").trim();
@@ -32,22 +28,13 @@ export async function POST(request: Request) {
   const companyNews = (body.companyNews ?? "").trim();
 
   if (!jobDescription && !resume && !targetRole) {
-    return NextResponse.json(
-      { error: "Provide a job description, resume, or target role." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "Provide a job description, resume, or target role." });
   }
   if (jobDescription.length > MAX_RUBRIC_CHARS) {
-    return NextResponse.json(
-      { error: `Job description exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Job description exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` });
   }
   if (resume.length > MAX_RUBRIC_CHARS) {
-    return NextResponse.json(
-      { error: `Resume exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Resume exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` });
   }
 
   console.info(
@@ -55,10 +42,7 @@ export async function POST(request: Request) {
   );
 
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
-    return NextResponse.json(
-      { error: "Question generation is not configured (OPENROUTER_API_KEY missing)." },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Question generation is not configured (OPENROUTER_API_KEY missing)." });
   }
 
   const sections = [
@@ -109,23 +93,17 @@ OUTPUT: JSON only matching the provided schema.`,
         : [],
     };
     if (questions.questions.length === 0) {
-      return NextResponse.json(
-        { error: "Model returned no questions — try adding a job description." },
-        { status: 502 },
-      );
+      return res.status(502).json({ error: "Model returned no questions — try adding a job description." });
     }
 
     console.info(
       `[agent:interview-generate] step=questions-generated count=${questions.questions.length} role="${questions.role}"`,
     );
-    return NextResponse.json(questions);
+    return res.json(questions);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Question generation failed.";
     console.error(`[agent:interview-generate] step=failed error="${message.slice(0, 200)}"`);
-    return NextResponse.json(
-      { error: `AI question generation failed: ${message}` },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: `AI question generation failed: ${message}` });
   }
 }
 

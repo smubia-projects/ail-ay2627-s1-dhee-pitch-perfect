@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+/** POST /api/presentation/parse-rubric — JSON: { rubricText, slideText, slidePdf? }. Returns directives, telemetry rules and overrides. */
+
+import type { Request, Response } from "express";
 
 import {
   chatCompletion,
@@ -14,8 +16,6 @@ import {
   trimForPrompt,
 } from "@/lib/presentation";
 import type { ParsedRubric } from "@/lib/presentation";
-
-export const runtime = "nodejs";
 
 /** Strict JSON output schema for the rubric parser. */
 const PARSE_SCHEMA: Record<string, unknown> = {
@@ -200,48 +200,29 @@ RULES
 - Never invent numeric thresholds that are not in the rubric.`;
 }
 
-export async function POST(request: Request) {
-  let body: ParseRubricRequest;
-  try {
-    body = (await request.json()) as ParseRubricRequest;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+export async function parseRubricHandler(req: Request, res: Response) {
+  // express.json() has already parsed (and size-capped) the body.
+  const body = (req.body ?? {}) as ParseRubricRequest;
 
   const rubricText = (body.rubricText ?? "").trim();
   const slideText = (body.slideText ?? "").trim();
   const slidePdf = body.slidePdf ?? null;
 
   if (!rubricText && !slideText && !slidePdf) {
-    return NextResponse.json(
-      { error: "Provide rubric text and/or slide content to parse." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "Provide rubric text and/or slide content to parse." });
   }
   if (rubricText.length > MAX_RUBRIC_CHARS) {
-    return NextResponse.json(
-      { error: `Rubric exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Rubric exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` });
   }
   if (slideText.length > MAX_SLIDE_CHARS) {
-    return NextResponse.json(
-      { error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` });
   }
   if (slidePdf && (slidePdf.data.length * 3) / 4 > MAX_PDF_BYTES) {
-    return NextResponse.json(
-      { error: "PDF slides exceed the 10 MB limit." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "PDF slides exceed the 10 MB limit." });
   }
 
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
-    return NextResponse.json(
-      { error: "Rubric parsing is not configured (OPENROUTER_API_KEY missing)." },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Rubric parsing is not configured (OPENROUTER_API_KEY missing)." });
   }
 
   // Build content parts: instructions first, then slide text or PDF.
@@ -294,15 +275,12 @@ export async function POST(request: Request) {
     console.info(
       `[agent:rubric-parse] step=rubric-parsed title="${rubric.title}" directives=${rubric.directives.length} telemetryRules=${rubric.telemetryRules.length}`,
     );
-    return NextResponse.json(rubric);
+    return res.json(rubric);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Rubric parsing failed.";
     console.error(`[agent:rubric-parse] step=failed error="${message.slice(0, 200)}"`);
-    return NextResponse.json(
-      { error: `AI rubric parsing failed: ${message}` },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: `AI rubric parsing failed: ${message}` });
   }
 }
 

@@ -10,7 +10,7 @@
  * Logs carry lengths and counts only — never the key, never transcripts.
  */
 
-import { NextResponse } from "next/server";
+import type { Request, Response } from "express";
 
 import {
   shouldScore as interviewShouldScore,
@@ -32,10 +32,6 @@ import {
 } from "@/lib/presentation-scorer";
 import { chatCompletion, getModel } from "@/lib/openrouter";
 import { ScoreRequestSchema, type ScoreRequest } from "@/lib/score";
-
-export const runtime = "nodejs";
-/** Two scoring attempts at 50s each — keep platform headroom above that. */
-export const maxDuration = 120;
 
 /**
  * Per-attempt request timeout, enforced by an AbortSignal on the fetch.
@@ -92,7 +88,7 @@ function isAuthError(err: unknown): boolean {
 }
 
 /** Maps provider failures (rate limit, overload, network, timeout) to a friendly response. */
-function providerErrorResponse(err: unknown): NextResponse {
+function providerErrorResponse(res: Response, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   const status =
     typeof (err as { status?: unknown }).status === "number"
@@ -108,56 +104,36 @@ function providerErrorResponse(err: unknown): NextResponse {
   // A rejected API key / exhausted credits is a config problem, not congestion
   // — say so explicitly rather than inviting blind retries.
   if (isAuthError(err)) {
-    return NextResponse.json(
+    return res.status(401).json(
       {
         error:
           "AI scoring is misconfigured — check OPENROUTER_API_KEY.",
         code: "auth",
       },
-      { status: 401 },
     );
   }
   if (timedOut) {
-    return NextResponse.json(
-      { error: "Mane took too long on that one — try again in a moment.", code: "timeout" },
-      { status: 504 },
-    );
+    return res.status(504).json({ error: "Mane took too long on that one — try again in a moment.", code: "timeout" });
   }
   if (transient) {
     // 502, not 503: 503 is reserved for the rate-limit kill switch ("paused").
-    return NextResponse.json(
-      { error: "Mane is busy, try again in a moment", code: "transient" },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: "Mane is busy, try again in a moment", code: "transient" });
   }
-  return NextResponse.json(
-    { error: "Mane couldn't score that run — please try again.", code: "failed" },
-    { status: 502 },
-  );
+  return res.status(502).json({ error: "Mane couldn't score that run — please try again.", code: "failed" });
 }
 
-export async function POST(request: Request) {
+export async function scoreHandler(req: Request, res: Response) {
   // Server-side secrets only — never NEXT_PUBLIC_, never echoed back.
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   const model = getModel();
 
   if (!apiKey) {
     console.error("[agent:score] step=config-missing");
-    return NextResponse.json(
-      { error: "Scoring service is not configured" },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Scoring service is not configured" });
   }
 
-  let bodyJson: unknown;
-  try {
-    bodyJson = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Request body must be valid JSON." },
-      { status: 400 },
-    );
-  }
+  // express.json() has already parsed (and size-capped) the body.
+  const bodyJson: unknown = req.body;
 
   const parsed = ScoreRequestSchema.safeParse(bodyJson);
   if (!parsed.success) {
@@ -165,7 +141,7 @@ export async function POST(request: Request) {
     const detail = issue
       ? `${issue.path.join(".") || "body"}: ${issue.message}`
       : "Invalid request body.";
-    return NextResponse.json({ error: detail }, { status: 400 });
+    return res.status(400).json({ error: detail });
   }
   const input: ScoreRequest = parsed.data;
   const transcript = input.transcript.trim();
@@ -181,7 +157,7 @@ export async function POST(request: Request) {
     if (!interviewShouldScore(transcript)) {
       // No API call, no cost (#13/#23).
       console.info(`[agent:score] step=insufficient-data words=${spoken}`);
-      return NextResponse.json({
+      return res.json({
         status: "insufficient_data",
         insufficientReason: `No answer detected: ${spoken} word${spoken === 1 ? "" : "s"} captured — at least 30 are needed to score an answer.`,
         skills: null,
@@ -198,7 +174,7 @@ export async function POST(request: Request) {
     );
     if (!presentationShouldScore(transcript)) {
       console.info(`[agent:score] step=insufficient-data words=${spoken}`);
-      return NextResponse.json({
+      return res.json({
         status: "insufficient_data",
         insufficientReason: `No speech detected: ${spoken} word${spoken === 1 ? "" : "s"} captured — there is nothing to score.`,
         skills: null,
@@ -234,7 +210,7 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       // Auth errors are permanent — surface them immediately, never retry.
-      if (isAuthError(err)) return providerErrorResponse(err);
+      if (isAuthError(err)) return providerErrorResponse(res, err);
       // Transient (429/5xx/timeout/network): one backoff retry, then give up
       // with a clear, non-silent error the UI can offer a Retry button for.
       providerAttempts += 1;
@@ -249,7 +225,7 @@ export async function POST(request: Request) {
         attempt -= 1; // this retry is provider-level, not a schema pass
         continue;
       }
-      return providerErrorResponse(err);
+      return providerErrorResponse(res, err);
     }
 
     let raw: unknown;
@@ -280,14 +256,11 @@ export async function POST(request: Request) {
   }
 
   if (feedback === null) {
-    return NextResponse.json(
-      { error: "Mane couldn't put that scorecard together — please try again." },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: "Mane couldn't put that scorecard together — please try again." });
   }
 
   console.info(
     `[agent:score] step=scored type=${input.type} status=${feedback.status} overall=${feedback.overall ?? "n/a"}`,
   );
-  return NextResponse.json(feedback);
+  return res.json(feedback);
 }

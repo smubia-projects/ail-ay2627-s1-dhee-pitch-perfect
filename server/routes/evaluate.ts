@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+/** POST /api/presentation/evaluate — JSON: { transcript, slideText, rubric, telemetry }. Returns a point-by-point scorecard. */
+
+import type { Request, Response } from "express";
 
 import {
   chatCompletion,
@@ -13,8 +15,6 @@ import {
 } from "@/lib/presentation";
 import type { ParsedRubric, Scorecard } from "@/lib/presentation";
 import type { SessionSummary } from "@/hooks/use-telemetry";
-
-export const runtime = "nodejs";
 
 /** Strict JSON output schema for the final scorecard. */
 const SCORECARD_SCHEMA: Record<string, unknown> = {
@@ -197,13 +197,9 @@ GRADING RULES
 Return ONLY the JSON object.`;
 }
 
-export async function POST(request: Request) {
-  let body: EvaluateRequest;
-  try {
-    body = (await request.json()) as EvaluateRequest;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+export async function evaluateHandler(req: Request, res: Response) {
+  // express.json() has already parsed (and size-capped) the body.
+  const body = (req.body ?? {}) as EvaluateRequest;
 
   const transcript = (body.transcript ?? "").trim();
   const slideText = (body.slideText ?? body.rubric?.slideText ?? "").trim();
@@ -211,30 +207,20 @@ export async function POST(request: Request) {
   const telemetry = body.telemetry ?? null;
 
   if (!transcript) {
-    return NextResponse.json(
-      { error: "A speech transcript is required for evaluation." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "A speech transcript is required for evaluation." });
   }
   if (transcript.length > MAX_TRANSCRIPT_CHARS) {
-    return NextResponse.json(
+    return res.status(400).json(
       {
         error: `Transcript exceeds ${MAX_TRANSCRIPT_CHARS.toLocaleString()} characters.`,
       },
-      { status: 400 },
     );
   }
   if (slideText.length > MAX_SLIDE_CHARS) {
-    return NextResponse.json(
-      { error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` });
   }
   if (!rubric || (!rubric.directives?.length && !rubric.telemetryRules?.length)) {
-    return NextResponse.json(
-      { error: "Parse a rubric first — directives or telemetry rules are required." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "Parse a rubric first — directives or telemetry rules are required." });
   }
 
   console.info(
@@ -242,10 +228,7 @@ export async function POST(request: Request) {
   );
 
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
-    return NextResponse.json(
-      { error: "Presentation evaluation is not configured (OPENROUTER_API_KEY missing)." },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Presentation evaluation is not configured (OPENROUTER_API_KEY missing)." });
   }
 
   // Assemble the four inputs for the model.
@@ -286,15 +269,12 @@ export async function POST(request: Request) {
     console.info(
       `[agent:presentation-evaluate] step=scorecard-generated overallScore=${scorecard.overallScore} grade=${scorecard.grade}`,
     );
-    return NextResponse.json(scorecard);
+    return res.json(scorecard);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Evaluation failed.";
     console.error(`[agent:presentation-evaluate] step=failed error="${message.slice(0, 200)}"`);
-    return NextResponse.json(
-      { error: `AI evaluation failed: ${message}` },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: `AI evaluation failed: ${message}` });
   }
 }
 
