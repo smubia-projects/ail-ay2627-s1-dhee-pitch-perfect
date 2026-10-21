@@ -1,11 +1,12 @@
 /**
  * Client-side entry point for the LLM scorer.
  *
- * This is the ONLY way browser code may reach Gemini: it POSTs to /api/score,
- * which holds the API key and the SDK. Never import @google/genai here and
- * never read GEMINI_API_KEY from the client.
+ * Browser code reaches the model only through the Cloud Run API: this POSTs to
+ * /api/score via the shared apiFetch helper (NEXT_PUBLIC_API_BASE + 429/503
+ * notices). The OpenRouter key lives on the server and is never read here.
  */
 
+import { apiFetch } from "@/lib/api";
 import type { InterviewFeedback } from "@/lib/interview-feedback-schema";
 import type { PresentationFeedback } from "@/lib/presentation-feedback-schema";
 import {
@@ -18,7 +19,10 @@ import {
 /** Friendly, UI-ready error thrown for non-2xx responses from /api/score. */
 export class ScoreRequestError extends Error {
   readonly status: number;
-  /** Machine-readable cause: "auth" | "timeout" | "transient" | "failed" | "network". */
+  /**
+   * Machine-readable cause: "auth" | "timeout" | "transient" | "failed" |
+   * "network" | "rate_limited" (429, CTA shown) | "paused" (503, notice shown).
+   */
   readonly code: string;
 
   constructor(message: string, status: number, code: string = "failed") {
@@ -30,7 +34,7 @@ export class ScoreRequestError extends Error {
 
   /** True when re-running the same request could plausibly succeed. */
   get retryable(): boolean {
-    return this.code !== "auth";
+    return this.code !== "auth" && this.code !== "rate_limited" && this.code !== "paused";
   }
 }
 
@@ -39,7 +43,7 @@ async function postScore(
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: ScoreRequestError }> {
   let response: Response;
   try {
-    response = await fetch("/api/score", {
+    response = await apiFetch("/api/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -60,6 +64,21 @@ async function postScore(
     data = await response.json();
   } catch {
     // Non-JSON body — fall through to the generic message below.
+  }
+
+  // 429 / 503 come from the shared rate-limit engine; apiFetch has already
+  // shown the CTA modal / paused notice.
+  if (response.status === 429) {
+    return {
+      ok: false,
+      error: new ScoreRequestError("demo limit reached", 429, "rate_limited"),
+    };
+  }
+  if (response.status === 503) {
+    return {
+      ok: false,
+      error: new ScoreRequestError("demo temporarily paused", 503, "paused"),
+    };
   }
 
   if (!response.ok) {

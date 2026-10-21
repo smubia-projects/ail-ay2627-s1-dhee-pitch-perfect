@@ -50,6 +50,7 @@ import {
   type PurposeSelection,
   type RubricCriterion,
 } from "@/lib/manestage";
+import { apiJson } from "@/lib/api";
 
 const STEPS = ["Purpose", "What matters", "Slides and setup", "Live room", "Results"];
 
@@ -190,22 +191,19 @@ export default function PresentationCoachPage() {
       let resultCard: Scorecard | null = null;
       if (words && !isLocalCoach()) {
         try {
-          const response = await fetch("/api/presentation/evaluate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const data = await apiJson<Scorecard>(
+            "/api/presentation/evaluate",
+            {
               transcript: words,
               slideText: calibration.slideText,
               rubric,
               telemetry: summary,
-            }),
-          });
-          if (response.ok) {
-            const data = (await response.json()) as Scorecard;
-            if (typeof data.overallScore === "number") resultCard = data;
-          }
+            },
+            "Evaluation failed",
+          );
+          if (typeof data.overallScore === "number") resultCard = data;
         } catch {
-          /* network/key unavailable → local engine below */
+          /* network / rate limited (CTA shown) / key unavailable → local engine below */
         }
       }
       if (!resultCard) {
