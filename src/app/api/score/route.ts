@@ -1,17 +1,16 @@
 /**
  * POST /api/score — server-side LLM scorer (interview + presentation).
  *
- * The Gemini SDK and GEMINI_API_KEY live only here (and in no client code).
+ * OPENROUTER_API_KEY is read only here (and in no client code).
  * Flow: config check → request validation → per-type shouldScore() cost gate
- * (insufficient_data is answered locally, no API call) → Gemini (system
- * instruction + JSON user input, temp 0.2, JSON output) → Zod parse with one
+ * (insufficient_data is answered locally, no API call) → OpenRouter (system
+ * message + JSON user input, temp 0.2, JSON output) → Zod parse with one
  * retry → guardrail validate() (evidence quotes verified against the
  * transcript; overall recomputed in code) → feedback JSON.
  * Logs carry lengths and counts only — never the key, never transcripts.
  */
 
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
 
 import {
   shouldScore as interviewShouldScore,
@@ -31,7 +30,7 @@ import {
   buildPresentationScorerInput,
   parsePresentationFeedback,
 } from "@/lib/presentation-scorer";
-import { GEMINI_MODEL } from "@/lib/gemini";
+import { chatCompletion, getModel } from "@/lib/openrouter";
 import { ScoreRequestSchema, type ScoreRequest } from "@/lib/score";
 
 export const runtime = "nodejs";
@@ -39,8 +38,8 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 /**
- * Per-attempt request timeout, enforced by both the SDK and an AbortSignal.
- * Gemini Flash latency is highly variable (≈3s warm, 30s+ on a cold start), so
+ * Per-attempt request timeout, enforced by an AbortSignal on the fetch.
+ * LLM latency is highly variable (≈3s warm, 30s+ on a cold start), so
  * the cap is generous — aborting a slow-but-working call is worse than waiting.
  */
 const REQUEST_TIMEOUT_MS = 50_000;
@@ -84,8 +83,9 @@ function isAuthError(err: unknown): boolean {
       : undefined;
   return (
     status === 401 ||
+    status === 402 ||
     status === 403 ||
-    /API key not valid|UNAUTHENTICATED|PERMISSION_DENIED|API key not found/i.test(
+    /Missing OpenRouter API key|No auth credentials|Insufficient credits|API key not valid|UNAUTHENTICATED/i.test(
       message,
     )
   );
@@ -105,13 +105,13 @@ function providerErrorResponse(err: unknown): NextResponse {
       timedOut ? "timeout" : transient ? "transient" : "failed"
     } detail="${message.slice(0, 160).replace(/["\n\r]/g, " ")}"`,
   );
-  // A rejected API key is a config problem, not congestion — say so explicitly
-  // so the user fixes .env.local rather than retrying blindly.
+  // A rejected API key / exhausted credits is a config problem, not congestion
+  // — say so explicitly rather than inviting blind retries.
   if (isAuthError(err)) {
     return NextResponse.json(
       {
         error:
-          "AI scoring is misconfigured — check GEMINI_API_KEY in .env.local.",
+          "AI scoring is misconfigured — check OPENROUTER_API_KEY.",
         code: "auth",
       },
       { status: 401 },
@@ -124,9 +124,10 @@ function providerErrorResponse(err: unknown): NextResponse {
     );
   }
   if (transient) {
+    // 502, not 503: 503 is reserved for the rate-limit kill switch ("paused").
     return NextResponse.json(
       { error: "Mane is busy, try again in a moment", code: "transient" },
-      { status: 503 },
+      { status: 502 },
     );
   }
   return NextResponse.json(
@@ -137,8 +138,8 @@ function providerErrorResponse(err: unknown): NextResponse {
 
 export async function POST(request: Request) {
   // Server-side secrets only — never NEXT_PUBLIC_, never echoed back.
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  const model = GEMINI_MODEL;
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  const model = getModel();
 
   if (!apiKey) {
     console.error("[agent:score] step=config-missing");
@@ -213,12 +214,8 @@ export async function POST(request: Request) {
     userText = JSON.stringify(buildPresentationScorerInput(input));
   }
 
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: { timeout: REQUEST_TIMEOUT_MS },
-  });
   console.info(
-    `[agent:score] step=calling-gemini model=${model} type=${input.type} inputChars=${userText.length}`,
+    `[agent:score] step=calling-llm model=${model} type=${input.type} inputChars=${userText.length}`,
   );
 
   let feedback: InterviewFeedback | PresentationFeedback | null = null;
@@ -226,17 +223,15 @@ export async function POST(request: Request) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && feedback === null; attempt += 1) {
     let text: string | undefined;
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ text: userText }] }],
-        config: {
-          systemInstruction,
-          temperature: 0.2,
-          responseMimeType: "application/json",
-          abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        },
+      text = await chatCompletion({
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: userText },
+        ],
+        temperature: 0.2,
+        responseFormat: { type: "json_object" },
+        timeoutMs: REQUEST_TIMEOUT_MS,
       });
-      text = response.text;
     } catch (err) {
       // Auth errors are permanent — surface them immediately, never retry.
       if (isAuthError(err)) return providerErrorResponse(err);

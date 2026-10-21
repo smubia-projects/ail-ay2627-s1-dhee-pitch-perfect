@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
-import { Type, type Schema } from "@google/genai";
 
-import { GEMINI_MODEL, generateWithRetry, getGeminiClient } from "@/lib/gemini";
+import {
+  chatCompletion,
+  generateWithRetry,
+  getModel,
+  jsonSchemaFormat,
+} from "@/lib/openrouter";
 import {
   MAX_SLIDE_CHARS,
   MAX_TRANSCRIPT_CHARS,
@@ -13,89 +17,84 @@ import type { SessionSummary } from "@/hooks/use-telemetry";
 export const runtime = "nodejs";
 
 /** Strict JSON output schema for the final scorecard. */
-const SCORECARD_SCHEMA: Schema = {
-  type: Type.OBJECT,
+const SCORECARD_SCHEMA: Record<string, unknown> = {
+  type: "object",
   properties: {
     overallScore: {
-      type: Type.NUMBER,
+      type: "number",
       description: "Overall score from 0 to 100 after all deductions.",
     },
     grade: {
-      type: Type.STRING,
-      format: "enum",
+      type: "string",
       enum: ["excellent", "good", "fair", "needs_work"],
     },
     summary: {
-      type: Type.STRING,
+      type: "string",
       description: "2–4 sentence overall assessment.",
     },
     categories: {
-      type: Type.ARRAY,
-      maxItems: "8",
+      type: "array",
+      maxItems: 8,
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
-          id: { type: Type.STRING },
-          name: { type: Type.STRING },
-          maxPoints: { type: Type.INTEGER },
-          awardedPoints: { type: Type.NUMBER },
-          deductionTotal: { type: Type.NUMBER },
+          id: { type: "string" },
+          name: { type: "string" },
+          maxPoints: { type: "integer" },
+          awardedPoints: { type: "number" },
+          deductionTotal: { type: "number" },
         },
         required: ["id", "name", "maxPoints", "awardedPoints", "deductionTotal"],
       },
     },
     points: {
-      type: Type.ARRAY,
-      minItems: "6",
-      maxItems: "14",
+      type: "array",
+      minItems: 6,
+      maxItems: 14,
       description:
         "Point-by-point scorecard: each rubric/telemetry criterion with deductions, feedback and evidence.",
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
-          id: { type: Type.STRING, description: 'e.g. "p1".' },
+          id: { type: "string", description: 'e.g. "p1".' },
           category: {
-            type: Type.STRING,
+            type: "string",
             description: "Category id this point belongs to.",
           },
-          title: { type: Type.STRING },
+          title: { type: "string" },
           status: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: ["met", "deducted", "na"],
           },
-          maxPoints: { type: Type.NUMBER },
-          pointsDeducted: { type: Type.NUMBER },
-          feedback: { type: Type.STRING },
+          maxPoints: { type: "number" },
+          pointsDeducted: { type: "number" },
+          feedback: { type: "string" },
           evidence: {
-            type: Type.ARRAY,
-            minItems: "1",
-            maxItems: "5",
+            type: "array",
+            minItems: 1,
+            maxItems: 5,
             items: {
-              type: Type.OBJECT,
+              type: "object",
               properties: {
                 source: {
-                  type: Type.STRING,
-                  format: "enum",
+                  type: "string",
                   enum: ["telemetry", "transcript", "rubric", "audio"],
                 },
-                detail: { type: Type.STRING },
+                detail: { type: "string" },
                 timestampSec: {
-                  type: Type.NUMBER,
-                  nullable: true,
+                  type: ["number", "null"],
                   description:
                     "Seconds from session start when the evidence is a timestamped event.",
                 },
                 count: {
-                  type: Type.INTEGER,
-                  nullable: true,
+                  type: ["integer", "null"],
                   description: "Occurrence count for aggregated evidence.",
                 },
               },
               required: ["source", "detail", "timestampSec", "count"],
             },
           },
-          recommendation: { type: Type.STRING },
+          recommendation: { type: "string" },
         },
         required: [
           "id",
@@ -111,27 +110,26 @@ const SCORECARD_SCHEMA: Schema = {
       },
     },
     telemetryHighlights: {
-      type: Type.ARRAY,
-      maxItems: "8",
+      type: "array",
+      maxItems: 8,
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
-          metric: { type: Type.STRING },
-          observation: { type: Type.STRING },
+          metric: { type: "string" },
+          observation: { type: "string" },
           assessment: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: ["good", "ok", "needs_work"],
           },
         },
         required: ["metric", "observation", "assessment"],
       },
     },
-    strengths: { type: Type.ARRAY, maxItems: "6", items: { type: Type.STRING } },
+    strengths: { type: "array", maxItems: 6, items: { type: "string" } },
     improvements: {
-      type: Type.ARRAY,
-      maxItems: "6",
-      items: { type: Type.STRING },
+      type: "array",
+      maxItems: 6,
+      items: { type: "string" },
     },
   },
   required: [
@@ -243,13 +241,10 @@ export async function POST(request: Request) {
     `[agent:presentation-evaluate] step=received transcriptChars=${transcript.length} slideChars=${slideText.length} directives=${rubric.directives.length} telemetryRules=${rubric.telemetryRules.length} telemetry=${telemetry ? "ok" : "missing"}`,
   );
 
-  let ai;
-  try {
-    ai = getGeminiClient(process.env.GEMINI_API_KEY);
-  } catch (err) {
+  if (!process.env.OPENROUTER_API_KEY?.trim()) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Gemini is not configured." },
-      { status: 503 },
+      { error: "Presentation evaluation is not configured (OPENROUTER_API_KEY missing)." },
+      { status: 500 },
     );
   }
 
@@ -277,21 +272,17 @@ export async function POST(request: Request) {
   try {
     const prompt = sections.join("\n\n");
     console.info(
-      `[agent:presentation-evaluate] step=calling-gemini model=${GEMINI_MODEL} promptChars=${prompt.length}`,
+      `[agent:presentation-evaluate] step=calling-llm model=${getModel()} promptChars=${prompt.length}`,
     );
-    const result = await generateWithRetry(() =>
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json",
-          responseSchema: SCORECARD_SCHEMA,
-        },
+    const text = await generateWithRetry(() =>
+      chatCompletion({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        maxTokens: 8192,
+        responseFormat: jsonSchemaFormat("presentation_scorecard", SCORECARD_SCHEMA),
       }),
     );
-    const scorecard = JSON.parse(result.text ?? "") as Scorecard;
+    const scorecard = JSON.parse(text) as Scorecard;
     console.info(
       `[agent:presentation-evaluate] step=scorecard-generated overallScore=${scorecard.overallScore} grade=${scorecard.grade}`,
     );
@@ -301,7 +292,7 @@ export async function POST(request: Request) {
       err instanceof Error ? err.message : "Evaluation failed.";
     console.error(`[agent:presentation-evaluate] step=failed error="${message.slice(0, 200)}"`);
     return NextResponse.json(
-      { error: `Gemini evaluation failed: ${message}` },
+      { error: `AI evaluation failed: ${message}` },
       { status: 502 },
     );
   }

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { GEMINI_MODEL, generateWithRetry, getGeminiClient } from "@/lib/gemini";
+import {
+  chatCompletion,
+  generateWithRetry,
+  getModel,
+  jsonSchemaFormat,
+} from "@/lib/openrouter";
 import {
   GENERATE_QUESTIONS_SCHEMA,
   type GeneratedQuestions,
@@ -49,13 +54,10 @@ export async function POST(request: Request) {
     `[agent:interview-generate] step=received role="${targetRole || "(derive)"}" jdChars=${jobDescription.length} resumeChars=${resume.length} companyNewsChars=${companyNews.length}`,
   );
 
-  let ai;
-  try {
-    ai = getGeminiClient(process.env.GEMINI_API_KEY);
-  } catch (err) {
+  if (!process.env.OPENROUTER_API_KEY?.trim()) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Gemini is not configured." },
-      { status: 503 },
+      { error: "Question generation is not configured (OPENROUTER_API_KEY missing)." },
+      { status: 500 },
     );
   }
 
@@ -87,21 +89,17 @@ OUTPUT: JSON only matching the provided schema.`,
   try {
     const prompt = sections.join("\n\n");
     console.info(
-      `[agent:interview-generate] step=calling-gemini model=${GEMINI_MODEL} promptChars=${prompt.length}`,
+      `[agent:interview-generate] step=calling-llm model=${getModel()} promptChars=${prompt.length}`,
     );
-    const result = await generateWithRetry(() =>
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.4,
-          maxOutputTokens: 4096,
-          responseMimeType: "application/json",
-          responseSchema: GENERATE_QUESTIONS_SCHEMA,
-        },
+    const text = await generateWithRetry(() =>
+      chatCompletion({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.4,
+        maxTokens: 4096,
+        responseFormat: jsonSchemaFormat("interview_questions", GENERATE_QUESTIONS_SCHEMA),
       }),
     );
-    const parsed = JSON.parse(result.text ?? "") as GeneratedQuestions;
+    const parsed = JSON.parse(text) as GeneratedQuestions;
 
     const questions: GeneratedQuestions = {
       role: typeof parsed.role === "string" ? parsed.role : targetRole,
@@ -125,7 +123,7 @@ OUTPUT: JSON only matching the provided schema.`,
     const message = err instanceof Error ? err.message : "Question generation failed.";
     console.error(`[agent:interview-generate] step=failed error="${message.slice(0, 200)}"`);
     return NextResponse.json(
-      { error: `Gemini question generation failed: ${message}` },
+      { error: `AI question generation failed: ${message}` },
       { status: 502 },
     );
   }
