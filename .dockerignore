@@ -1,0 +1,20 @@
+# Only package*.json, tsconfig.json, src/ and server/ are needed to build the API image.
+node_modules
+.next
+out
+server/dist
+public
+src/app
+src/components
+.git
+.github
+.vercel
+.env
+.env.*
+!.env.example
+*.md
+*.tsbuildinfo
+next-env.d.ts
+Dockerfile
+.dockerignore
+vercel.json
