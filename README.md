@@ -30,7 +30,7 @@ flowchart TD
         Up["RubricUploader<br/>pdfjs-dist · jszip (pptx) · PDF/PPTX/text"]
     end
 
-    subgraph API["Route Handlers (Node runtime, server-side keys)"]
+    subgraph API["Express API on Cloud Run (server/, server-side keys, rate limited)"]
         R1["POST /api/presentation/parse-rubric"]
         R2["POST /api/presentation/evaluate"]
         R3["POST /api/interview/generate-questions"]
@@ -38,8 +38,8 @@ flowchart TD
     end
 
     subgraph Core["Orchestration layer (src/lib)"]
-        G["gemini.ts<br/>getGeminiClient · generateWithRetry (exp. backoff)"]
-        S["Structured output: responseSchema"]
+        G["openrouter.ts<br/>chatCompletion · generateWithRetry (exp. backoff)"]
+        S["Structured output: JSON Schema response_format"]
         P["presentation.ts · interview.ts<br/>prompt builders, char budgets, trimming"]
         OFF["offline-engine.ts<br/>deterministic fallback when API unavailable"]
         H["session-history.ts (localStorage)"]
@@ -50,7 +50,7 @@ flowchart TD
     Cam --> R4
     UI --> R3
     R1 & R2 & R3 & R4 --> G
-    G -->|retry on 429/503| Gemini[("Gemini Flash")]
+    G -->|retry on 429/503| LLM[("OpenRouter · google/gemini-2.5-flash")]
     G -->|no key / quota| OFF
     R1 & R2 & R3 & R4 --> S
     R1 & R2 & R3 & R4 --> P
@@ -60,66 +60,73 @@ flowchart TD
 **Technical flow (evaluation request):**
 
 1. Client validates input size, captures transcript + telemetry session summary (raw events stripped to a compact summary for the prompt).
-2. Route handler re-validates (length caps, required fields) → assembles a prompt with explicit char budgets (`trimForPrompt`).
-3. `generateWithRetry` calls Gemini with a **strict response schema** (`application/json` + `responseSchema`) and **exponential backoff** on 429/503/overload.
+2. The API route re-validates (length caps, required fields) → assembles a prompt with explicit char budgets (`trimForPrompt`).
+3. `generateWithRetry` calls OpenRouter with a **strict JSON Schema** (`response_format: json_schema`) and **exponential backoff** on 429/503/overload.
 4. Response is parsed and structurally validated before reaching the UI; failures return friendly `{ error }` messages with proper HTTP status — never raw API errors.
-5. If Gemini is unavailable (no key / hard quota), the **offline engine** produces a deterministic local scorecard so the UI degrades gracefully instead of breaking.
+5. If the API is unavailable (or the demo limit is reached) (no key / hard quota), the **offline engine** produces a deterministic local scorecard so the UI degrades gracefully instead of breaking.
 
 ## Hackathon Rules Mapping
 
 - **Orchestration, not a wrapper:** multi-step agent workflows (parse rubric → evaluate), structured output schemas for every LLM response (`SCORECARD_SCHEMA`, `PARSE_SCHEMA`, `GENERATE_QUESTIONS_SCHEMA`, plus the Zod feedback schemas), and local state manipulation (session history, telemetry capture).
 - **Dynamic context handling:** all prompts pass through `trimForPrompt` with per-input budgets (`MAX_RUBRIC_CHARS`, `MAX_SLIDE_CHARS`, `MAX_TRANSCRIPT_CHARS`).
 - **Reliability:** `generateWithRetry` (4 attempts, 800 ms exponential backoff, skips daily-quota lockouts), offline fallback engine, friendly UI error states.
-- **Safety:** API key read only in server route handlers; model output is schema-constrained JSON, re-validated before rendering; users see normalized errors, not stack traces.
+- **Safety:** API key read only by the Express API; model output is schema-constrained JSON, re-validated before rendering; users see normalized errors, not stack traces.
 - **Demo logging:** every agent step is logged with an `[agent:<step>]` prefix in the server console (see below), so demo recordings can be narrated straight from the terminal.
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js 20+
-- A Gemini API key — create one free at [Google AI Studio](https://aistudio.google.com/apikey) (open the link, sign in, and click **Create API key**)
+- Node.js 22+
+- An OpenRouter API key from [openrouter.ai/keys](https://openrouter.ai/keys)
 
 ### Install & run
 
 ```bash
-git clone <your-repo-url> manestage
-cd manestage
 npm install
+cp .env.example .env      # fill in OPENROUTER_API_KEY; never commit .env
 
-cp .env.example .env.local
-# open .env.local and paste your Gemini API key — never paste it in chat
-# and never commit it (.env* files are gitignored; only .env.example is tracked)
-
-npm run dev
+npm run dev:server        # API on http://localhost:8080 (tsx watch)
+npm run dev               # frontend on http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+The frontend calls the API at `NEXT_PUBLIC_API_BASE`, which defaults to
+`http://localhost:8080` when unset. Without Upstash credentials rate limiting is
+disabled, which is what local dev wants.
 
-> **Restart after editing `.env.local`.** Next.js only reads env files at
-> startup — changes don't take effect until you stop and re-run `npm run dev`.
+### Layout
+
+| Part | Where | Hosting |
+| --- | --- | --- |
+| Frontend (Next.js, MediaPipe + Web Speech in the browser) | `src/app`, `src/components`, `src/hooks` | Vercel |
+| API (Express 5, the four AI routes + `GET /api/health`) | `server/` (imports `src/lib`) | Cloud Run |
+
+Every browser call goes through `src/lib/api.ts`. A 429 from the rate limiter opens the
+AI Lodge CTA modal, a 503 shows a "demo temporarily paused" notice, and the offline
+coach still produces a local result in both cases.
 
 ### Environment variables
 
-Create `.env.local` from `.env.example` and fill in:
+API (`.env` locally, the `DOTENV` secret in production; see `.env.example`):
 
-| Variable | Where it's used | Required |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | Server routes only (`src/app/api/*`) — no `NEXT_PUBLIC_` prefix, so it is never bundled into the browser | ✅ for AI features |
-| `GEMINI_MODEL` | Model for every AI route (`/api/score`, `/api/presentation/*`, `/api/interview/generate-questions`); defaults to `gemini-3.7-flash` when unset | ⛔ optional |
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | OpenRouter key (required for AI features) |
+| `OPENROUTER_MODEL` | Model for every route, default `google/gemini-2.5-flash` (must accept PDFs) |
+| `CORS_ORIGINS` | Comma-separated frontend origins (the Vercel URL) |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Shared rate-limit store |
+| `RATE_LIMIT_SCORE_MAX`, `RATE_LIMIT_GENERATE_QUESTIONS_MAX`, `RATE_LIMIT_EVALUATE_MAX`, `RATE_LIMIT_PARSE_RUBRIC_MAX` | Per-IP fallback limits |
+| `RATE_LIMIT_WINDOW_SECONDS` | Window, default 432000 (5 days) |
 
-The app builds and runs without any key; API routes return a friendly error and the offline engine keeps the core flow usable.
+Frontend (Vercel): `NEXT_PUBLIC_API_BASE` = the Cloud Run URL.
 
 ### LLM scorer (`POST /api/score`)
 
-Browser code never imports the Gemini SDK and never reads the key — it only
-calls `POST /api/score` via the typed helper in `src/lib/score-client.ts`
-(the SDK is imported exclusively by the server route handlers under
-`src/app/api/*`). The route
-validates the body with Zod, short-circuits very short transcripts with an
-`insufficient_data` result before any model call (`shouldScore`), parses the
-model's JSON with a Zod schema (retrying once on failure), and drops any
-score whose `evidenceQuote` is not a verbatim quote from the transcript
+Browser code never reads the key: it calls `POST /api/score` via the typed helper in
+`src/lib/score-client.ts`. The route validates the body with Zod, short-circuits very
+short transcripts with an `insufficient_data` result before any model call
+(`shouldScore`), parses the model's JSON with a Zod schema (retrying once on failure),
+and drops any score whose `evidenceQuote` is not a verbatim quote from the transcript
 (`validate`).
 
 ## Demo Logging
@@ -127,36 +134,35 @@ score whose `evidenceQuote` is not a verbatim quote from the transcript
 Server console output is prefixed so each agent step is easy to follow while screen-recording:
 
 ```
-[agent:gemini] retry attempt=2/4 delayMs=800 reason="503 Service Unavailable ..."
+[agent:llm] retry attempt=2/4 delayMs=800 reason="503 Service Unavailable ..."
 [agent:interview-evaluate] step=received transcriptChars=1482 companyNewsChars=0 telemetry=ok
-[agent:interview-evaluate] step=calling-gemini model=gemini-3.7-flash promptChars=6211
+[agent:interview-evaluate] step=calling-llm model=google/gemini-2.5-flash promptChars=6211
 [agent:interview-evaluate] step=scorecard-generated overallScore=78 engine=gemini
 ```
 
-Run `npm run dev` in a terminal next to the browser to capture these alongside the UI.
+Run `npm run dev:server` in a terminal next to the browser to capture these alongside the UI.
 
 ## Scripts
 
 ```bash
-npm run dev    # development server
-npm run build  # production build (verified passing)
-npm run lint   # eslint
-npm run start  # serve production build
+npm run dev           # frontend dev server
+npm run dev:server    # API dev server (tsx watch, reads .env)
+npm run build         # frontend production build
+npm run build:server  # bundle the API into server/dist/server.js (esbuild)
+npm run start:server  # run the bundled API
+npm test              # vitest
 ```
 
 ## Deployment
 
-Deployable as-is to Vercel (or any Node host — Render/Fly.io):
-
-```bash
-npm i -g vercel && vercel
-# then set GEMINI_API_KEY in the project's Environment Variables
-```
-
-🔗 **Live deployment:** _&lt;paste your Vercel/Render URL here after deploying&gt;_
-
-Env vars are read from `.env.local` in dev and from the host's environment settings in production — no code changes required per platform.
+- **API → Cloud Run:** `.github/workflows/deploy.yml` builds the root `Dockerfile`, pushes
+  it to Docker Hub and deploys service `ail-ay2627-s1-dhee-pitch-perfect` on every push
+  to `main`. Env vars come from the `DOTENV` repo secret
+  (`gh secret set DOTENV --repo smubia-projects/ail-ay2627-s1-dhee-pitch-perfect < .env`).
+- **Frontend → Vercel:** import the repo (root directory = repo root, Next.js preset),
+  set `NEXT_PUBLIC_API_BASE` to the Cloud Run URL, then add the Vercel URL to
+  `CORS_ORIGINS` and redeploy the API.
 
 ## Tech Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · @google/genai (LLM scorer) · zod · @google/generative-ai · @mediapipe/tasks-vision · pdfjs-dist · jszip · framer-motion · shadcn/ui
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Express 5 (Cloud Run API) · OpenRouter · zod · @upstash/redis (rate limiting) · @mediapipe/tasks-vision · pdfjs-dist · jszip · framer-motion · shadcn/ui
