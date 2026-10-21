@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     // Static assets shipped verbatim (self-hosted MediaPipe wasm glue is
     // minified Emscripten output, not lintable source):
     "public/**",
+    // esbuild bundle of the API server (npm run build:server):
+    "server/dist/**",
   ]),
 ]);
 
