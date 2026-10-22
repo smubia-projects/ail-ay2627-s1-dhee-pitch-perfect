@@ -124,7 +124,7 @@ function providerErrorResponse(res: Response, err: unknown) {
 
 export async function scoreHandler(req: Request, res: Response) {
   // Server-side secrets only — never NEXT_PUBLIC_, never echoed back.
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  const apiKey = (process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim();
   const model = getModel();
 
   if (!apiKey) {

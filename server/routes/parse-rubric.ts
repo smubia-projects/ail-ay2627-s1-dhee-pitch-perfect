@@ -221,7 +221,7 @@ export async function parseRubricHandler(req: Request, res: Response) {
     return res.status(400).json({ error: "PDF slides exceed the 10 MB limit." });
   }
 
-  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+  if (!(process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim()) {
     return res.status(500).json({ error: "Rubric parsing is not configured (OPENROUTER_API_KEY missing)." });
   }
 

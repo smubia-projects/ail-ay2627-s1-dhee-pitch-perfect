@@ -41,7 +41,7 @@ export async function generateQuestionsHandler(req: Request, res: Response) {
     `[agent:interview-generate] step=received role="${targetRole || "(derive)"}" jdChars=${jobDescription.length} resumeChars=${resume.length} companyNewsChars=${companyNews.length}`,
   );
 
-  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+  if (!(process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim()) {
     return res.status(500).json({ error: "Question generation is not configured (OPENROUTER_API_KEY missing)." });
   }
 

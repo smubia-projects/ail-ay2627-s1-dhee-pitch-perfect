@@ -7,14 +7,14 @@
  * and never leaves the server; browser code must not import this module.
  */
 
-export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+export const OPENROUTER_BASE_URL = ((process.env.API_BASE_URL || process.env.OPENROUTER_BASE_URL)?.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
 
 /** Default model: Gemini Flash handles JSON-schema output and native PDF input. */
 const DEFAULT_MODEL = "google/gemini-2.5-flash";
 
 /** Model for every AI route — `OPENROUTER_MODEL` env var, else the default. */
 export function getModel(): string {
-  return process.env.OPENROUTER_MODEL?.trim() || DEFAULT_MODEL;
+  return (process.env.MODEL_NAME || process.env.OPENROUTER_MODEL)?.trim() || DEFAULT_MODEL;
 }
 
 /** Error carrying the upstream HTTP status (when there was one). */
@@ -74,7 +74,7 @@ export interface ChatOptions {
  * Throws `OpenRouterError` (with `.status`) on any HTTP or provider error.
  */
 export async function chatCompletion(options: ChatOptions): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  const apiKey = (process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim();
   if (!apiKey) {
     throw new OpenRouterError(
       "Missing OpenRouter API key. Set OPENROUTER_API_KEY to enable AI coaching.",

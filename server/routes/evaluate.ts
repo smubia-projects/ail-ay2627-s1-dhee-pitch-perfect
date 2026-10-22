@@ -227,7 +227,7 @@ export async function evaluateHandler(req: Request, res: Response) {
     `[agent:presentation-evaluate] step=received transcriptChars=${transcript.length} slideChars=${slideText.length} directives=${rubric.directives.length} telemetryRules=${rubric.telemetryRules.length} telemetry=${telemetry ? "ok" : "missing"}`,
   );
 
-  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+  if (!(process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim()) {
     return res.status(500).json({ error: "Presentation evaluation is not configured (OPENROUTER_API_KEY missing)." });
   }
 

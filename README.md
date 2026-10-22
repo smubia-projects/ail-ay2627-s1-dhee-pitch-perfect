@@ -84,7 +84,7 @@ flowchart TD
 
 ```bash
 npm install
-cp .env.example .env      # fill in OPENROUTER_API_KEY; never commit .env
+cp .env.example .env      # fill in API_KEY; never commit .env
 
 npm run dev:server        # API on http://localhost:8080 (tsx watch)
 npm run dev               # frontend on http://localhost:3000
@@ -111,8 +111,8 @@ API (`.env` locally, the `DOTENV` secret in production; see `.env.example`):
 
 | Variable | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | OpenRouter key (required for AI features) |
-| `OPENROUTER_MODEL` | Model for every route, default `google/gemini-2.5-flash` (must accept PDFs) |
+| `API_KEY` | OpenRouter key (required for AI features) |
+| `MODEL_NAME` | Model for every route, default `google/gemini-2.5-flash` (must accept PDFs) |
 | `CORS_ORIGINS` | Comma-separated frontend origins (the Vercel URL) |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Shared rate-limit store |
 | `RATE_LIMIT_SCORE_MAX`, `RATE_LIMIT_GENERATE_QUESTIONS_MAX`, `RATE_LIMIT_EVALUATE_MAX`, `RATE_LIMIT_PARSE_RUBRIC_MAX` | Per-IP fallback limits |
