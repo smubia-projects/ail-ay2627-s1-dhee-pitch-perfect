@@ -36,6 +36,11 @@ export class ScoreRequestError extends Error {
   get retryable(): boolean {
     return this.code !== "auth" && this.code !== "rate_limited" && this.code !== "paused";
   }
+
+  /** True for 429 / 503: the AI limit or the kill switch stopped the request, so no offline result replaces it. */
+  get limited(): boolean {
+    return this.code === "rate_limited" || this.code === "paused";
+  }
 }
 
 async function postScore(

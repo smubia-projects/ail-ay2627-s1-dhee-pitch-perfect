@@ -7,7 +7,7 @@ import { DEMO_PAUSED_EVENT, RATE_LIMIT_EVENT } from '@/lib/api';
  * Showcase rate-limit CTA modal (shown on HTTP 429) and the distinct
  * "demo paused" notice (shown on HTTP 503 from the rate-limit kill switch).
  * <ApiNotices /> listens for the events src/lib/api.ts dispatches and renders them.
- * The offline coach keeps producing local scorecards either way.
+ * The AI step that hit the limit stops; the offline coach does not stand in for it.
  */
 
 export const PROJECT_CTA = {

@@ -9,7 +9,8 @@
  *  - 429 (limit reached)  -> dispatches RATE_LIMIT_EVENT with queries_used, for the CTA modal
  *  - 503 (demo paused)    -> dispatches DEMO_PAUSED_EVENT with the message, for the paused notice
  * <ApiNotices /> (src/components/RateLimitCTA.tsx) renders both. Callers then
- * fall back to the offline coach as they do for any other failure.
+ * stop: the offline coach never stands in for an AI result after a 429 / 503
+ * (it still covers other failures and the user-chosen local coach mode).
  */
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080").replace(/\/+$/, "");

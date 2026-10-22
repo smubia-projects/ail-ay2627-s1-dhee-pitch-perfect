@@ -25,7 +25,7 @@ import type { GeneratedQuestion, GeneratedQuestions } from "@/lib/interview";
 import { generateQuestionsLocally } from "@/lib/interview";
 import { isLocalCoach } from "@/lib/prefs-store";
 import { savePracticeSession } from "@/lib/session-history";
-import { apiJson } from "@/lib/api";
+import { apiJson, isHandledApiError } from "@/lib/api";
 import type { InterviewFeedback } from "@/lib/interview-feedback-schema";
 import {
   DEFAULT_INTERVIEW_CONTEXT,
@@ -100,8 +100,10 @@ export default function InterviewCoachPage() {
             },
             "Question generation failed",
           );
-        } catch {
-          /* offline / rate limited (CTA shown) / no key → local generator below */
+        } catch (err) {
+          // Over the AI limit or paused: the CTA / notice is shown and generation stops (no local questions in its place).
+          if (isHandledApiError(err)) return;
+          /* offline / no key → local generator below */
         }
       }
 

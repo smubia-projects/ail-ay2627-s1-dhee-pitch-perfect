@@ -220,7 +220,7 @@ export function InterviewLiveStage({
     setAnswering(true);
   }
 
-  /** Calls the LLM scorer, with a deterministic offline fallback (#23). */
+  /** Calls the LLM scorer, with a deterministic offline fallback (#23) for failures other than the AI limit. */
   async function scoreAnswer(
     q: GeneratedQuestion,
     transcript: string,
@@ -281,6 +281,15 @@ export function InterviewLiveStage({
       setFeedbacks((prev) => ({ ...prev, [q.id]: result }));
       saveAttempt(q.id, transcript, result);
     } catch (err) {
+      if (err instanceof ScoreRequestError && err.limited) {
+        // Over the AI limit or paused: the CTA / notice is shown and the answer stays unscored (no offline review).
+        setScoreError(
+          err.status === 429
+            ? "AI scoring limit reached: this answer wasn't scored."
+            : "AI scoring is paused: this answer wasn't scored.",
+        );
+        return;
+      }
       // Offline fallback keeps the flow usable without a valid API key.
       const review = evaluateAnswer({
         question: q,

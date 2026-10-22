@@ -102,8 +102,9 @@ disabled, which is what local dev wants.
 | API (Express 5, the four AI routes + `GET /api/health`) | `server/` (imports `src/lib`) | Cloud Run |
 
 Every browser call goes through `src/lib/api.ts`. A 429 from the rate limiter opens the
-AI Lodge CTA modal, a 503 shows a "demo temporarily paused" notice, and the offline
-coach still produces a local result in both cases.
+AI Lodge CTA modal, a 503 shows a "demo temporarily paused" notice, and in both cases the
+AI step stops: the offline coach does not stand in for it (on-device metrics such as pace,
+gaze and posture are still shown).
 
 ### Environment variables
 
