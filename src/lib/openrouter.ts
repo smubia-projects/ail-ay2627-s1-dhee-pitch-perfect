@@ -7,10 +7,10 @@
  * and never leaves the server; browser code must not import this module.
  */
 
-export const OPENROUTER_BASE_URL = ((process.env.API_BASE_URL || process.env.OPENROUTER_BASE_URL)?.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+export const OPENROUTER_BASE_URL = ((process.env.API_BASE_URL || process.env.OPENROUTER_BASE_URL)?.trim() || "https://api.apiyi.com/v1").replace(/\/+$/, "");
 
 /** Default model: Gemini Flash handles JSON-schema output and native PDF input. */
-const DEFAULT_MODEL = "google/gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 /** Model for every AI route — `OPENROUTER_MODEL` env var, else the default. */
 export function getModel(): string {
@@ -30,7 +30,7 @@ export class OpenRouterError extends Error {
 
 export type ContentPart =
   | { type: "text"; text: string }
-  | { type: "file"; file: { filename: string; file_data: string } };
+  | { type: "image_url"; image_url: { url: string } };
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -52,12 +52,12 @@ export function jsonSchemaFormat(
   return { type: "json_schema", json_schema: { name, strict: true, schema } };
 }
 
-/** Builds a PDF `file` content part from base64 data (no data: prefix). */
-export function pdfFilePart(base64: string, filename = "slides.pdf"): ContentPart {
-  return {
-    type: "file",
-    file: { filename, file_data: `data:application/pdf;base64,${base64}` },
-  };
+/**
+ * Builds a PDF content part from base64 data (no data: prefix). apiyi's Gemini models read a PDF sent as an
+ * `image_url` data URL and silently ignore OpenRouter-style `file` parts.
+ */
+export function pdfFilePart(base64: string): ContentPart {
+  return { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } };
 }
 
 export interface ChatOptions {
