@@ -1,5 +1,5 @@
 /**
- * Manestage — Interview Coach domain model.
+ * ManeStage — Interview Coach domain model.
  *
  * Industry raffle-wheel list, the open-ended context box shape, the six
  * evaluation dimensions (Structured Thinking, STAR/CAR, Measurable Impact,
@@ -172,7 +172,7 @@ export interface EvaluateAnswerInput {
 export const MIN_ANSWER_WORDS = 30;
 
 /**
- * Scores one answer across the six Manestage dimensions and produces the
+ * Scores one answer across the six ManeStage dimensions and produces the
  * specific feedback bullets shown live under the question. Answers under
  * MIN_ANSWER_WORDS (or with no captured transcript) are reported as
  * "No answer detected" — no scores are invented.

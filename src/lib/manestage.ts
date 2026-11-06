@@ -1,5 +1,5 @@
 /**
- * Manestage — Presentation Coach domain model.
+ * ManeStage — Presentation Coach domain model.
  *
  * Purpose selection (incl. the custom questionnaire), curated rubric
  * presets with weightage, deck & hardware calibration state, and the

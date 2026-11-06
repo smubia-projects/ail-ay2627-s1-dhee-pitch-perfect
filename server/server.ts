@@ -7,7 +7,7 @@ import { parseRubricHandler } from "./routes/parse-rubric";
 import { scoreHandler } from "./routes/score";
 
 /**
- * Pitch Perfect (Manestage) API (Cloud Run). API-only: the Next.js frontend is
+ * ManeStage API (Cloud Run). API-only: the Next.js frontend is
  * deployed separately on Vercel and calls these routes via NEXT_PUBLIC_API_BASE.
  * MediaPipe telemetry and Web Speech captions stay in the browser.
  *
@@ -50,7 +50,7 @@ app.post("/api/presentation/evaluate", json, limitEvaluate, evaluateHandler);
 app.post("/api/presentation/parse-rubric", jsonWithPdf, limitParseRubric, parseRubricHandler);
 
 app.use((_req, res) => {
-  res.status(404).json({ error: "Not found. This is the Pitch Perfect API; the app itself is on the frontend." });
+  res.status(404).json({ error: "Not found. This is the ManeStage API; the app itself is on the frontend." });
 });
 
 const onError: ErrorRequestHandler = (err, _req, res, _next) => {
@@ -64,5 +64,5 @@ app.use(onError);
 
 const port = Number(process.env.PORT) || 8080;
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Pitch Perfect API listening on 0.0.0.0:${port}`);
+  console.log(`ManeStage API listening on 0.0.0.0:${port}`);
 });

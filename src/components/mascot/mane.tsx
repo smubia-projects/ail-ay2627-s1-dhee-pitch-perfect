@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Mane — Manestage's cute, round pastel lion mascot. Pure inline SVG (no
+ * Mane — ManeStage's cute, round pastel lion mascot. Pure inline SVG (no
  * image assets) with three attire variants:
  *   - "plain"     soft peach lion with a terracotta collar ruff
  *   - "presenter" cream tux with a pastel bow tie
@@ -67,7 +67,7 @@ export function Mane({
 
 /**
  * Mini Mane badge — a round cream coin holding a tiny Mane, used in the
- * Manestage header/brand lockups.
+ * ManeStage header/brand lockups.
  */
 export function ManeBadge({
   size = 34,
