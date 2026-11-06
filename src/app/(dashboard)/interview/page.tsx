@@ -25,6 +25,7 @@ import type { GeneratedQuestion, GeneratedQuestions } from "@/lib/interview";
 import { generateQuestionsLocally } from "@/lib/interview";
 import { isLocalCoach } from "@/lib/prefs-store";
 import { savePracticeSession } from "@/lib/session-history";
+import { apiJson, isHandledApiError } from "@/lib/api";
 import type { InterviewFeedback } from "@/lib/interview-feedback-schema";
 import {
   DEFAULT_INTERVIEW_CONTEXT,
@@ -89,20 +90,19 @@ export default function InterviewCoachPage() {
       // Local coach mode never calls the cloud — straight to the local generator below.
       if (!isLocalCoach()) {
         try {
-          const response = await fetch("/api/interview/generate-questions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          result = await apiJson<GeneratedQuestions>(
+            "/api/interview/generate-questions",
+            {
               targetRole: `${context.role} (${industry})`,
               jobDescription: contextSummary,
               resume: context.contextNotes,
               companyNews: INDUSTRY_NEWS_HOOKS[industry] ?? "",
-            }),
-          });
-          if (response.ok) {
-            result = (await response.json()) as GeneratedQuestions;
-          }
-        } catch {
+            },
+            "Question generation failed",
+          );
+        } catch (err) {
+          // Over the AI limit or paused: the CTA / notice is shown and generation stops (no local questions in its place).
+          if (isHandledApiError(err)) return;
           /* offline / no key → local generator below */
         }
       }

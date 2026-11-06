@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { GeneratedQuestions, QuestionGenerationInput } from "@/lib/interview";
+import { apiJson, isHandledApiError } from "@/lib/api";
 
 export type InterviewSetupValue = QuestionGenerationInput;
 
@@ -53,18 +54,15 @@ export function InterviewSetup({
     setError(null);
     setGenerating(true);
     try {
-      const response = await fetch("/api/interview/generate-questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inputs),
-      });
-      const data = (await response.json()) as GeneratedQuestions & { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error ?? `Question generation failed (${response.status}).`);
-      }
+      const data = await apiJson<GeneratedQuestions>(
+        "/api/interview/generate-questions",
+        inputs,
+        "Question generation failed",
+      );
       setGenerated(data);
       onGenerated(data, inputs);
     } catch (err) {
+      if (isHandledApiError(err)) return; // CTA / paused notice already shown
       setError(err instanceof Error ? err.message : "Question generation failed.");
     } finally {
       setGenerating(false);

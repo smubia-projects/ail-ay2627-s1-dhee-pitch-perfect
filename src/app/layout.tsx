@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ApiNotices } from "@/components/RateLimitCTA";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -16,6 +17,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        {/* Rate-limit CTA (429) and demo-paused notice (503) for every API call */}
+        <ApiNotices />
       </body>
     </html>
   );

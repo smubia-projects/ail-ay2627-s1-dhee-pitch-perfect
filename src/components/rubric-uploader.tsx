@@ -43,6 +43,7 @@ import {
 import type { ParsedRubric, TelemetryRule } from "@/lib/presentation";
 import { localParseRubric } from "@/lib/offline-engine";
 import { isLocalCoach } from "@/lib/prefs-store";
+import { apiJson, isHandledApiError } from "@/lib/api";
 
 /** Everything the evaluation API needs from the presenter. */
 export interface PresentationInputs {
@@ -164,23 +165,20 @@ export function RubricUploader({
       return;
     }
     try {
-      const response = await fetch("/api/presentation/parse-rubric", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await apiJson<ParsedRubric>(
+        "/api/presentation/parse-rubric",
+        {
           rubricText,
           slideText: slidePdf ? "" : slidesText,
           slidePdf: slidePdf
             ? { data: slidePdf.base64, mimeType: slidePdf.mimeType }
             : null,
-        }),
-      });
-      const data = (await response.json()) as ParsedRubric & { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error ?? `Rubric parsing failed (${response.status}).`);
-      }
+        },
+        "Rubric parsing failed",
+      );
       setParsed(data);
     } catch (err) {
+      if (isHandledApiError(err)) return; // CTA / paused notice already shown
       setError(err instanceof Error ? err.message : "Rubric parsing failed.");
     } finally {
       setParsing(false);

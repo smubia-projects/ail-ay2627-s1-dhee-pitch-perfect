@@ -50,6 +50,7 @@ import {
   type PurposeSelection,
   type RubricCriterion,
 } from "@/lib/manestage";
+import { apiJson, isHandledApiError } from "@/lib/api";
 
 const STEPS = ["Purpose", "What matters", "Slides and setup", "Live room", "Results"];
 
@@ -190,22 +191,30 @@ export default function PresentationCoachPage() {
       let resultCard: Scorecard | null = null;
       if (words && !isLocalCoach()) {
         try {
-          const response = await fetch("/api/presentation/evaluate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const data = await apiJson<Scorecard>(
+            "/api/presentation/evaluate",
+            {
               transcript: words,
               slideText: calibration.slideText,
               rubric,
               telemetry: summary,
-            }),
-          });
-          if (response.ok) {
-            const data = (await response.json()) as Scorecard;
-            if (typeof data.overallScore === "number") resultCard = data;
+            },
+            "Evaluation failed",
+          );
+          if (typeof data.overallScore === "number") resultCard = data;
+        } catch (err) {
+          if (isHandledApiError(err)) {
+            // Over the AI limit or paused: the CTA / notice is shown and no offline scorecard stands in.
+            // The measured on-device report (setReport above) is not AI output and stays.
+            setScorecard(null);
+            setEvalError(
+              err.status === 429
+                ? "AI coaching limit reached: this run shows your on-device metrics only."
+                : "AI coaching is paused: this run shows your on-device metrics only.",
+            );
+            return;
           }
-        } catch {
-          /* network/key unavailable → local engine below */
+          /* network / key unavailable → local engine below */
         }
       }
       if (!resultCard) {
@@ -427,6 +436,16 @@ export default function PresentationCoachPage() {
       }
       // insufficient_data → nothing saved (#11/#14/#25).
     } catch (err) {
+      if (err instanceof ScoreRequestError && err.limited) {
+        // Over the AI limit or paused: the CTA / notice is shown; no offline score is saved in its place.
+        setFeedbackRetryable(false);
+        setFeedbackError(
+          err.status === 429
+            ? "AI coaching limit reached: no AI feedback for this run."
+            : "AI coaching is paused: no AI feedback for this run.",
+        );
+        return;
+      }
       // The cloud scorer failed. Do NOT pretend it worked: label the offline
       // numbers honestly as basic metrics (no content analysis), and offer a
       // Retry when the failure is one a re-run could fix (not a bad API key).
