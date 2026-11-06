@@ -1,10 +1,8 @@
 /**
- * Shared types & Gemini schemas for the Interview Coach engine:
+ * Shared types & LLM JSON schemas for the Interview Coach engine:
  * STAR-structured question generation and answer evaluation
  * (pacing/initiation, STAR structure, strategic alignment, directness).
  */
-
-import { Type, type Schema } from "@google/genai";
 
 // ---------------------------------------------------------------------------
 // Question generation
@@ -49,51 +47,51 @@ export interface GeneratedQuestions {
 }
 
 // ---------------------------------------------------------------------------
-// Gemini response schemas (strict JSON output)
+// LLM response schemas (JSON Schema for OpenRouter structured output)
 // ---------------------------------------------------------------------------
 
 /** Schema for POST /api/interview/generate-questions. */
-export const GENERATE_QUESTIONS_SCHEMA: Schema = {
-  type: Type.OBJECT,
+export const GENERATE_QUESTIONS_SCHEMA: Record<string, unknown> = {
+  type: "object",
   properties: {
     role: {
-      type: Type.STRING,
+      type: "string",
       description: "The target role the questions are tailored to.",
     },
     questions: {
-      type: Type.ARRAY,
-      minItems: "5",
-      maxItems: "5",
+      type: "array",
+      minItems: 5,
+      maxItems: 5,
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
-          id: { type: Type.STRING, description: 'Exactly "q1"…"q5".' },
+          id: { type: "string", description: 'Exactly "q1"…"q5".' },
           question: {
-            type: Type.STRING,
+            type: "string",
             description: "A realistic interview question a hiring manager would ask.",
           },
           competency: {
-            type: Type.STRING,
+            type: "string",
             description:
               'Primary competency probed, e.g. "Leadership", "Stakeholder management", "Execution under pressure".',
           },
           starPointers: {
-            type: Type.OBJECT,
+            type: "object",
             properties: {
               situation: {
-                type: Type.STRING,
+                type: "string",
                 description: "What a strong Situation paragraph should cover.",
               },
               task: {
-                type: Type.STRING,
+                type: "string",
                 description: "What a strong Task statement must make clear.",
               },
               action: {
-                type: Type.STRING,
+                type: "string",
                 description: "Which personal actions/verbs the story should demonstrate.",
               },
               result: {
-                type: Type.STRING,
+                type: "string",
                 description: "What measurable outcome the Result should prove.",
               },
             },
@@ -104,7 +102,7 @@ export const GENERATE_QUESTIONS_SCHEMA: Schema = {
       },
     },
     summary: {
-      type: Type.STRING,
+      type: "string",
       description: "1–2 sentence summary of the question set and its focus.",
     },
   },

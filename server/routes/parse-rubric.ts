@@ -1,7 +1,14 @@
-import { NextResponse } from "next/server";
-import { Type, type Part, type Schema } from "@google/genai";
+/** POST /api/presentation/parse-rubric — JSON: { rubricText, slideText, slidePdf? }. Returns directives, telemetry rules and overrides. */
 
-import { GEMINI_MODEL, generateWithRetry, getGeminiClient } from "@/lib/gemini";
+import type { Request, Response } from "express";
+
+import {
+  chatCompletion,
+  generateWithRetry,
+  jsonSchemaFormat,
+  pdfFilePart,
+  type ContentPart,
+} from "@/lib/openrouter";
 import {
   MAX_PDF_BYTES,
   MAX_RUBRIC_CHARS,
@@ -10,33 +17,30 @@ import {
 } from "@/lib/presentation";
 import type { ParsedRubric } from "@/lib/presentation";
 
-export const runtime = "nodejs";
-
 /** Strict JSON output schema for the rubric parser. */
-const PARSE_SCHEMA: Schema = {
-  type: Type.OBJECT,
+const PARSE_SCHEMA: Record<string, unknown> = {
+  type: "object",
   properties: {
     title: {
-      type: Type.STRING,
+      type: "string",
       description:
         "Presentation title derived from the slides or rubric, else a short generic title.",
     },
     slideText: {
-      type: Type.STRING,
+      type: "string",
       description:
         "Normalized slide content (titles + bullets, slide markers preserved). Extracted from the PDF when one is attached; lightly normalized when provided as text; empty string when no slides were supplied.",
     },
     directives: {
-      type: Type.ARRAY,
-      maxItems: "40",
+      type: "array",
+      maxItems: 40,
       description:
         "Qualitative coaching directives: narrative hooks, structure, content, delivery, visual aids.",
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
           category: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: [
               "narrative_hook",
               "structure",
@@ -47,11 +51,11 @@ const PARSE_SCHEMA: Schema = {
             ],
           },
           instruction: {
-            type: Type.STRING,
+            type: "string",
             description: "One concise, actionable directive.",
           },
           slideRef: {
-            type: Type.STRING,
+            type: "string",
             description:
               'Slide or section the directive targets, e.g. "slide 3", "opening", "n/a".',
           },
@@ -60,16 +64,15 @@ const PARSE_SCHEMA: Schema = {
       },
     },
     telemetryRules: {
-      type: Type.ARRAY,
-      maxItems: "30",
+      type: "array",
+      maxItems: 30,
       description:
         "Hard numeric rules the rubric implies for webcam/mic telemetry (ideal pace, posture strictness, eye contact limits, …).",
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
           metric: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: [
               "wpm",
               "pause_seconds",
@@ -86,27 +89,24 @@ const PARSE_SCHEMA: Schema = {
             ],
           },
           comparator: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: ["at_least", "at_most", "ideal_range"],
           },
-          value: { type: Type.NUMBER },
+          value: { type: "number" },
           valueMax: {
-            type: Type.NUMBER,
-            nullable: true,
+            type: ["number", "null"],
             description: "Upper bound for ideal_range, else null.",
           },
           unit: {
-            type: Type.STRING,
+            type: "string",
             description: 'Unit of the threshold, e.g. "wpm", "deg", "sec".',
           },
           severity: {
-            type: Type.STRING,
-            format: "enum",
+            type: "string",
             enum: ["hard", "soft"],
           },
           description: {
-            type: Type.STRING,
+            type: "string",
             description: "The rubric wording this rule was derived from.",
           },
         },
@@ -122,22 +122,21 @@ const PARSE_SCHEMA: Schema = {
       },
     },
     semanticOverrides: {
-      type: Type.ARRAY,
-      maxItems: "15",
+      type: "array",
+      maxItems: 15,
       description:
         "Moments the rubric requires the speaker to intentionally break a telemetry norm (turning to a physical slide, table, demo, …) — these must not be flagged as distracted gaze.",
       items: {
-        type: Type.OBJECT,
+        type: "object",
         properties: {
           cue: {
-            type: Type.STRING,
+            type: "string",
             description: "What the rubric asks the speaker to do.",
           },
           protects: {
-            type: Type.ARRAY,
+            type: "array",
             items: {
-              type: Type.STRING,
-              format: "enum",
+              type: "string",
               enum: [
                 "gaze_off_camera",
                 "turned_away",
@@ -149,7 +148,7 @@ const PARSE_SCHEMA: Schema = {
             },
           },
           guidance: {
-            type: Type.STRING,
+            type: "string",
             description:
               "How the evaluator can recognize this moment in the transcript (phrase, topic, slide cue).",
           },
@@ -158,7 +157,7 @@ const PARSE_SCHEMA: Schema = {
       },
     },
     summary: {
-      type: Type.STRING,
+      type: "string",
       description: "1–2 sentence overview of the parsed rubric.",
     },
   },
@@ -174,7 +173,7 @@ const PARSE_SCHEMA: Schema = {
 
 interface ParseRubricRequest {
   slideText?: string;
-  /** Base64-encoded PDF slides (forwarded to Gemini as inline data). */
+  /** Base64-encoded PDF slides (forwarded to the model as a PDF file part). */
   slidePdf?: { data: string; mimeType: string } | null;
   rubricText?: string;
   title?: string;
@@ -201,51 +200,29 @@ RULES
 - Never invent numeric thresholds that are not in the rubric.`;
 }
 
-export async function POST(request: Request) {
-  let body: ParseRubricRequest;
-  try {
-    body = (await request.json()) as ParseRubricRequest;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+export async function parseRubricHandler(req: Request, res: Response) {
+  // express.json() has already parsed (and size-capped) the body.
+  const body = (req.body ?? {}) as ParseRubricRequest;
 
   const rubricText = (body.rubricText ?? "").trim();
   const slideText = (body.slideText ?? "").trim();
   const slidePdf = body.slidePdf ?? null;
 
   if (!rubricText && !slideText && !slidePdf) {
-    return NextResponse.json(
-      { error: "Provide rubric text and/or slide content to parse." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "Provide rubric text and/or slide content to parse." });
   }
   if (rubricText.length > MAX_RUBRIC_CHARS) {
-    return NextResponse.json(
-      { error: `Rubric exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Rubric exceeds ${MAX_RUBRIC_CHARS.toLocaleString()} characters.` });
   }
   if (slideText.length > MAX_SLIDE_CHARS) {
-    return NextResponse.json(
-      { error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: `Slide text exceeds ${MAX_SLIDE_CHARS.toLocaleString()} characters.` });
   }
   if (slidePdf && (slidePdf.data.length * 3) / 4 > MAX_PDF_BYTES) {
-    return NextResponse.json(
-      { error: "PDF slides exceed the 10 MB limit." },
-      { status: 400 },
-    );
+    return res.status(400).json({ error: "PDF slides exceed the 10 MB limit." });
   }
 
-  let ai;
-  try {
-    ai = getGeminiClient(process.env.GEMINI_API_KEY);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Gemini is not configured." },
-      { status: 503 },
-    );
+  if (!(process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim()) {
+    return res.status(500).json({ error: "Rubric parsing is not configured (OPENROUTER_API_KEY missing)." });
   }
 
   // Build content parts: instructions first, then slide text or PDF.
@@ -257,15 +234,13 @@ export async function POST(request: Request) {
     `RUBRIC:\n${rubricText ? trimForPrompt(rubricText, MAX_RUBRIC_CHARS) : "(no rubric text supplied — derive only slide content and obvious defaults; do not invent rules)"}`,
   );
 
-  const parts: Part[] = [{ text: sections.join("\n\n") }];
+  const parts: ContentPart[] = [{ type: "text", text: sections.join("\n\n") }];
   if (slidePdf) {
-    parts.push({
-      inlineData: { mimeType: slidePdf.mimeType, data: slidePdf.data },
-    });
+    parts.push(pdfFilePart(slidePdf.data));
   }
 
   const promptChars = parts.reduce(
-    (sum, part) => sum + (typeof part.text === "string" ? part.text.length : 0),
+    (sum, part) => sum + (part.type === "text" ? part.text.length : 0),
     0,
   );
   console.info(
@@ -273,19 +248,15 @@ export async function POST(request: Request) {
   );
 
   try {
-    const result = await generateWithRetry(() =>
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: "user", parts }],
-        config: {
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-          responseMimeType: "application/json",
-          responseSchema: PARSE_SCHEMA,
-        },
+    const text = await generateWithRetry(() =>
+      chatCompletion({
+        messages: [{ role: "user", content: parts }],
+        temperature: 0.2,
+        maxTokens: 4096,
+        responseFormat: jsonSchemaFormat("parsed_rubric", PARSE_SCHEMA),
       }),
     );
-    const parsed = JSON.parse(result.text ?? "") as ParsedRubric;
+    const parsed = JSON.parse(text) as ParsedRubric;
 
     // Minimal structural validation before handing it to the UI.
     const rubric: ParsedRubric = {
@@ -304,15 +275,12 @@ export async function POST(request: Request) {
     console.info(
       `[agent:rubric-parse] step=rubric-parsed title="${rubric.title}" directives=${rubric.directives.length} telemetryRules=${rubric.telemetryRules.length}`,
     );
-    return NextResponse.json(rubric);
+    return res.json(rubric);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Rubric parsing failed.";
     console.error(`[agent:rubric-parse] step=failed error="${message.slice(0, 200)}"`);
-    return NextResponse.json(
-      { error: `Gemini rubric parsing failed: ${message}` },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: `AI rubric parsing failed: ${message}` });
   }
 }
 

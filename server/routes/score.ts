@@ -1,17 +1,16 @@
 /**
  * POST /api/score — server-side LLM scorer (interview + presentation).
  *
- * The Gemini SDK and GEMINI_API_KEY live only here (and in no client code).
+ * OPENROUTER_API_KEY is read only here (and in no client code).
  * Flow: config check → request validation → per-type shouldScore() cost gate
- * (insufficient_data is answered locally, no API call) → Gemini (system
- * instruction + JSON user input, temp 0.2, JSON output) → Zod parse with one
+ * (insufficient_data is answered locally, no API call) → OpenRouter (system
+ * message + JSON user input, temp 0.2, JSON output) → Zod parse with one
  * retry → guardrail validate() (evidence quotes verified against the
  * transcript; overall recomputed in code) → feedback JSON.
  * Logs carry lengths and counts only — never the key, never transcripts.
  */
 
-import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import type { Request, Response } from "express";
 
 import {
   shouldScore as interviewShouldScore,
@@ -31,16 +30,12 @@ import {
   buildPresentationScorerInput,
   parsePresentationFeedback,
 } from "@/lib/presentation-scorer";
-import { GEMINI_MODEL } from "@/lib/gemini";
+import { chatCompletion, getModel } from "@/lib/openrouter";
 import { ScoreRequestSchema, type ScoreRequest } from "@/lib/score";
 
-export const runtime = "nodejs";
-/** Two scoring attempts at 50s each — keep platform headroom above that. */
-export const maxDuration = 120;
-
 /**
- * Per-attempt request timeout, enforced by both the SDK and an AbortSignal.
- * Gemini Flash latency is highly variable (≈3s warm, 30s+ on a cold start), so
+ * Per-attempt request timeout, enforced by an AbortSignal on the fetch.
+ * LLM latency is highly variable (≈3s warm, 30s+ on a cold start), so
  * the cap is generous — aborting a slow-but-working call is worse than waiting.
  */
 const REQUEST_TIMEOUT_MS = 50_000;
@@ -84,15 +79,16 @@ function isAuthError(err: unknown): boolean {
       : undefined;
   return (
     status === 401 ||
+    status === 402 ||
     status === 403 ||
-    /API key not valid|UNAUTHENTICATED|PERMISSION_DENIED|API key not found/i.test(
+    /Missing OpenRouter API key|No auth credentials|Insufficient credits|API key not valid|UNAUTHENTICATED/i.test(
       message,
     )
   );
 }
 
 /** Maps provider failures (rate limit, overload, network, timeout) to a friendly response. */
-function providerErrorResponse(err: unknown): NextResponse {
+function providerErrorResponse(res: Response, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   const status =
     typeof (err as { status?: unknown }).status === "number"
@@ -105,58 +101,39 @@ function providerErrorResponse(err: unknown): NextResponse {
       timedOut ? "timeout" : transient ? "transient" : "failed"
     } detail="${message.slice(0, 160).replace(/["\n\r]/g, " ")}"`,
   );
-  // A rejected API key is a config problem, not congestion — say so explicitly
-  // so the user fixes .env.local rather than retrying blindly.
+  // A rejected API key / exhausted credits is a config problem, not congestion
+  // — say so explicitly rather than inviting blind retries.
   if (isAuthError(err)) {
-    return NextResponse.json(
+    return res.status(401).json(
       {
         error:
-          "AI scoring is misconfigured — check GEMINI_API_KEY in .env.local.",
+          "AI scoring is misconfigured — check OPENROUTER_API_KEY.",
         code: "auth",
       },
-      { status: 401 },
     );
   }
   if (timedOut) {
-    return NextResponse.json(
-      { error: "Mane took too long on that one — try again in a moment.", code: "timeout" },
-      { status: 504 },
-    );
+    return res.status(504).json({ error: "Mane took too long on that one — try again in a moment.", code: "timeout" });
   }
   if (transient) {
-    return NextResponse.json(
-      { error: "Mane is busy, try again in a moment", code: "transient" },
-      { status: 503 },
-    );
+    // 502, not 503: 503 is reserved for the rate-limit kill switch ("paused").
+    return res.status(502).json({ error: "Mane is busy, try again in a moment", code: "transient" });
   }
-  return NextResponse.json(
-    { error: "Mane couldn't score that run — please try again.", code: "failed" },
-    { status: 502 },
-  );
+  return res.status(502).json({ error: "Mane couldn't score that run — please try again.", code: "failed" });
 }
 
-export async function POST(request: Request) {
+export async function scoreHandler(req: Request, res: Response) {
   // Server-side secrets only — never NEXT_PUBLIC_, never echoed back.
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  const model = GEMINI_MODEL;
+  const apiKey = (process.env.API_KEY || process.env.OPENROUTER_API_KEY)?.trim();
+  const model = getModel();
 
   if (!apiKey) {
     console.error("[agent:score] step=config-missing");
-    return NextResponse.json(
-      { error: "Scoring service is not configured" },
-      { status: 500 },
-    );
+    return res.status(500).json({ error: "Scoring service is not configured" });
   }
 
-  let bodyJson: unknown;
-  try {
-    bodyJson = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Request body must be valid JSON." },
-      { status: 400 },
-    );
-  }
+  // express.json() has already parsed (and size-capped) the body.
+  const bodyJson: unknown = req.body;
 
   const parsed = ScoreRequestSchema.safeParse(bodyJson);
   if (!parsed.success) {
@@ -164,7 +141,7 @@ export async function POST(request: Request) {
     const detail = issue
       ? `${issue.path.join(".") || "body"}: ${issue.message}`
       : "Invalid request body.";
-    return NextResponse.json({ error: detail }, { status: 400 });
+    return res.status(400).json({ error: detail });
   }
   const input: ScoreRequest = parsed.data;
   const transcript = input.transcript.trim();
@@ -180,7 +157,7 @@ export async function POST(request: Request) {
     if (!interviewShouldScore(transcript)) {
       // No API call, no cost (#13/#23).
       console.info(`[agent:score] step=insufficient-data words=${spoken}`);
-      return NextResponse.json({
+      return res.json({
         status: "insufficient_data",
         insufficientReason: `No answer detected: ${spoken} word${spoken === 1 ? "" : "s"} captured — at least 30 are needed to score an answer.`,
         skills: null,
@@ -197,7 +174,7 @@ export async function POST(request: Request) {
     );
     if (!presentationShouldScore(transcript)) {
       console.info(`[agent:score] step=insufficient-data words=${spoken}`);
-      return NextResponse.json({
+      return res.json({
         status: "insufficient_data",
         insufficientReason: `No speech detected: ${spoken} word${spoken === 1 ? "" : "s"} captured — there is nothing to score.`,
         skills: null,
@@ -213,12 +190,8 @@ export async function POST(request: Request) {
     userText = JSON.stringify(buildPresentationScorerInput(input));
   }
 
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: { timeout: REQUEST_TIMEOUT_MS },
-  });
   console.info(
-    `[agent:score] step=calling-gemini model=${model} type=${input.type} inputChars=${userText.length}`,
+    `[agent:score] step=calling-llm model=${model} type=${input.type} inputChars=${userText.length}`,
   );
 
   let feedback: InterviewFeedback | PresentationFeedback | null = null;
@@ -226,20 +199,18 @@ export async function POST(request: Request) {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && feedback === null; attempt += 1) {
     let text: string | undefined;
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: [{ role: "user", parts: [{ text: userText }] }],
-        config: {
-          systemInstruction,
-          temperature: 0.2,
-          responseMimeType: "application/json",
-          abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        },
+      text = await chatCompletion({
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: userText },
+        ],
+        temperature: 0.2,
+        responseFormat: { type: "json_object" },
+        timeoutMs: REQUEST_TIMEOUT_MS,
       });
-      text = response.text;
     } catch (err) {
       // Auth errors are permanent — surface them immediately, never retry.
-      if (isAuthError(err)) return providerErrorResponse(err);
+      if (isAuthError(err)) return providerErrorResponse(res, err);
       // Transient (429/5xx/timeout/network): one backoff retry, then give up
       // with a clear, non-silent error the UI can offer a Retry button for.
       providerAttempts += 1;
@@ -254,7 +225,7 @@ export async function POST(request: Request) {
         attempt -= 1; // this retry is provider-level, not a schema pass
         continue;
       }
-      return providerErrorResponse(err);
+      return providerErrorResponse(res, err);
     }
 
     let raw: unknown;
@@ -285,14 +256,11 @@ export async function POST(request: Request) {
   }
 
   if (feedback === null) {
-    return NextResponse.json(
-      { error: "Mane couldn't put that scorecard together — please try again." },
-      { status: 502 },
-    );
+    return res.status(502).json({ error: "Mane couldn't put that scorecard together — please try again." });
   }
 
   console.info(
     `[agent:score] step=scored type=${input.type} status=${feedback.status} overall=${feedback.overall ?? "n/a"}`,
   );
-  return NextResponse.json(feedback);
+  return res.json(feedback);
 }
