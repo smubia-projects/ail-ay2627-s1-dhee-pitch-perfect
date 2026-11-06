@@ -94,7 +94,7 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "X-Title": "Pitch Perfect",
+      "X-Title": "ManeStage",
     },
     body: JSON.stringify(body),
     signal: options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined,

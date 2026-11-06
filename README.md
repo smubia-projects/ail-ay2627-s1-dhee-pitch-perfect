@@ -1,6 +1,6 @@
-# 🦁 Manestage — Mane's Interview & Presentation Coach
+# 🦁 ManeStage — Mane's Interview & Presentation Coach
 
-**Manestage** is a soft pastel-orange communication studio (Caslon type, Mane the round pastel lion as your coach) that turns a laptop webcam into a full mock-interview and presentation-rehearsal stage. It measures *how* you speak (pace, pauses, eye contact, posture, pitch) with on-device MediaPipe/Web Speech telemetry, pairs it with *what* you said (transcript + weighted rubric), and returns a structured, evidence-backed scorecard with an interactive quality timeline — in one click.
+**ManeStage** is a soft pastel-orange communication studio (Caslon type, Mane the round pastel lion as your coach) that turns a laptop webcam into a full mock-interview and presentation-rehearsal stage. It measures *how* you speak (pace, pauses, eye contact, posture, pitch) with on-device MediaPipe/Web Speech telemetry, pairs it with *what* you said (transcript + weighted rubric), and returns a structured, evidence-backed scorecard with an interactive quality timeline — in one click.
 
 **Modules:** Presentation Coach (purpose → rubric weightage → deck & hardware calibration → live room → analytics) · Interview Coach (industry raffle wheel → question calibration → live TTS stage → six-dimension report) · Master Analytics (tabbed longitudinal line graphs + skill radar charts).
 

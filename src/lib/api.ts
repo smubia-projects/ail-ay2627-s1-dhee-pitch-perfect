@@ -1,5 +1,5 @@
 /**
- * The one way the browser talks to the Pitch Perfect API.
+ * The one way the browser talks to the ManeStage API.
  *
  * The API runs on Cloud Run and the frontend on Vercel, so every request is
  * prefixed with NEXT_PUBLIC_API_BASE (inlined at build time). Locally it
@@ -62,7 +62,7 @@ export async function apiJson<T>(path: string, payload: unknown, fallbackError: 
       body: JSON.stringify(payload),
     });
   } catch {
-    throw new Error("Couldn't reach the Pitch Perfect server. Check your connection and try again.");
+    throw new Error("Couldn't reach the ManeStage server. Check your connection and try again.");
   }
   if (res.status === 429 || res.status === 503) throw new HandledApiError(res.status);
 

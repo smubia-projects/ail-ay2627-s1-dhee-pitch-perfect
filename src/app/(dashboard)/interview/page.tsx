@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Interview Coach — 4-step Manestage wizard:
+ * Interview Coach — 4-step ManeStage wizard:
  *   1. Industry & context input (raffle wheel + open-ended context box)
  *   2. Question set calibration (AI-generated, editable, custom additions)
  *   3. Live AI interview stage (TTS questions, camera, six-dimension

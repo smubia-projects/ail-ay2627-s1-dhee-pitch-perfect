@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Welcome / Home screen: the Manestage brand header (Plus Jakarta Sans +
+ * Welcome / Home screen: the ManeStage brand header (Plus Jakarta Sans +
  * mini Mane badge), Mane holding a speech bubble with the hero greeting,
  * and the two fully-clickable coach option cards with soft hover lifts.
  */
@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Mane, ManeBadge } from "@/components/mascot/mane";
 import { SpeechBubble } from "@/components/mascot/speech-bubble";
 
-const GREETING = "Welcome to Manestage! What are we practicing today?";
+const GREETING = "Welcome to ManeStage! What are we practicing today?";
 
 /** Lines Mane says when you tap him. */
 const LION_LINES = [
@@ -56,7 +56,7 @@ export default function HomePage() {
           <ManeBadge size={40} />
           <div className="flex flex-col">
             <h1 className="text-3xl leading-none font-extrabold tracking-tight text-ink-900">
-              Manestage
+              ManeStage
             </h1>
             <span className="text-xs font-medium text-ink-600">
               Mane&apos;s practice studio

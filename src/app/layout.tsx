@@ -5,11 +5,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Manestage: Presentation and Interview Coach",
-    template: "%s · Manestage",
+    default: "ManeStage: Presentation and Interview Coach",
+    template: "%s · ManeStage",
   },
   description:
-    "Manestage is a friendly practice studio. Rehearse presentations and interviews with Mane, get your scores, and watch yourself improve session after session.",
+    "ManeStage is a friendly practice studio. Rehearse presentations and interviews with Mane, get your scores, and watch yourself improve session after session.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

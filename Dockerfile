@@ -1,4 +1,4 @@
-# Pitch Perfect API (Cloud Run). Build context = repo root.
+# ManeStage API (Cloud Run). Build context = repo root.
 # Stage 1 bundles server/server.ts and the src/lib modules it imports into one file.
 FROM node:22-slim AS build
 WORKDIR /app

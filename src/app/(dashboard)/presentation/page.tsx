@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Presentation Coach — 5-step Manestage wizard:
+ * Presentation Coach — 5-step ManeStage wizard:
  *   1. Purpose selection (3 curated purposes + custom questionnaire)
  *   2. Rubric customization (curated criteria, weight sliders, custom rules)
  *   3. Deck & hardware calibration (PDF/PPTX upload, script, device switch)

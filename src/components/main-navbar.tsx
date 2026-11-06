@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Main navigation — a frosted-glass navbar with the Manestage wordmark
+ * Main navigation — a frosted-glass navbar with the ManeStage wordmark
  * (Plus Jakarta Sans + mini Mane badge), iris active-link indicators, a shimmer
  * CTA, and a shadcn Sheet-based mobile menu.
  */
@@ -129,7 +129,7 @@ export function MainNavbar() {
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2 font-display text-ink-900">
                   <ManeBadge size={26} />
-                  Manestage
+                  ManeStage
                 </SheetTitle>
               </SheetHeader>
               <nav className="mt-4 flex flex-col gap-1" aria-label="Mobile">

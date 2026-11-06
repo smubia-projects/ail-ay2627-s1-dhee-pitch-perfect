@@ -11,7 +11,7 @@ import { DEMO_PAUSED_EVENT, RATE_LIMIT_EVENT } from '@/lib/api';
  */
 
 export const PROJECT_CTA = {
-  name: 'Pitch Perfect',
+  name: 'ManeStage',
   emoji: '🦁',
   accentColor: '#E8894F',
   headline: "Mane says: great rehearsal!",
