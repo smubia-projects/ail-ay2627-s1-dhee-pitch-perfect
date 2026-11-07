@@ -16,7 +16,7 @@ export const PROJECT_CTA = {
   accentColor: '#E8894F',
   headline: "Mane says: great rehearsal!",
   description:
-    'This demo ran {count} AI coaching requests for you, scoring your answers and presentations. Want to build AI coaches like this? Join us and build projects like this.',
+    'Want to build AI coaches that sharpen how people speak and present? Sketch it, build it, ship it: AI Lodge gives you the team and the runway to take an AI idea live.',
   programme: 'AI Lodge',
   programmeLink: 'https://www.smubia.com/ailodge',
   githubLink: 'https://github.com/smubia-projects/ail-ay2627-s1-dhee-pitch-perfect',
