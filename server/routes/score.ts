@@ -30,7 +30,7 @@ import {
   buildPresentationScorerInput,
   parsePresentationFeedback,
 } from "@/lib/presentation-scorer";
-import { chatCompletion, getModel } from "@/lib/openrouter";
+import { chatCompletion, getModel, parseModelJson } from "@/lib/openrouter";
 import { ScoreRequestSchema, type ScoreRequest } from "@/lib/score";
 
 /**
@@ -46,12 +46,6 @@ function countWords(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
-/** Strips a stray ```json fence the model occasionally wraps around JSON. */
-function stripJsonFences(text: string): string {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fenced ? fenced[1] : trimmed;
-}
 
 /** True only for failures worth retrying (rate limit, overload, timeout, network). */
 function isTransientProviderError(err: unknown): boolean {
@@ -230,7 +224,7 @@ export async function scoreHandler(req: Request, res: Response) {
 
     let raw: unknown;
     try {
-      raw = JSON.parse(stripJsonFences(text ?? ""));
+      raw = parseModelJson(text ?? "");
     } catch {
       console.error(
         `[agent:score] step=parse-failed attempt=${attempt} reason=invalid-json`,

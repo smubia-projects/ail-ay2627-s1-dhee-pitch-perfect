@@ -3,8 +3,7 @@
 import type { Request, Response } from "express";
 
 import {
-  chatCompletion,
-  generateWithRetry,
+  chatJson,
   getModel,
   jsonSchemaFormat,
 } from "@/lib/openrouter";
@@ -75,15 +74,19 @@ OUTPUT: JSON only matching the provided schema.`,
     console.info(
       `[agent:interview-generate] step=calling-llm model=${getModel()} promptChars=${prompt.length}`,
     );
-    const text = await generateWithRetry(() =>
-      chatCompletion({
+    const parsed = await chatJson<GeneratedQuestions>(
+      {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.4,
         maxTokens: 4096,
         responseFormat: jsonSchemaFormat("interview_questions", GENERATE_QUESTIONS_SCHEMA),
-      }),
+      },
+      (q) =>
+        Array.isArray(q?.questions) && q.questions.some((x) => x && typeof x.question === "string")
+          ? null
+          : "questions must be a non-empty array of objects with a question string",
+      "interview-generate",
     );
-    const parsed = JSON.parse(text) as GeneratedQuestions;
 
     const questions: GeneratedQuestions = {
       role: typeof parsed.role === "string" ? parsed.role : targetRole,

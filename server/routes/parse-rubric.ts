@@ -3,8 +3,7 @@
 import type { Request, Response } from "express";
 
 import {
-  chatCompletion,
-  generateWithRetry,
+  chatJson,
   jsonSchemaFormat,
   pdfFilePart,
   type ContentPart,
@@ -248,15 +247,16 @@ export async function parseRubricHandler(req: Request, res: Response) {
   );
 
   try {
-    const text = await generateWithRetry(() =>
-      chatCompletion({
+    const parsed = await chatJson<ParsedRubric>(
+      {
         messages: [{ role: "user", content: parts }],
         temperature: 0.2,
         maxTokens: 4096,
         responseFormat: jsonSchemaFormat("parsed_rubric", PARSE_SCHEMA),
-      }),
+      },
+      (r) => (r && typeof r === "object" && !Array.isArray(r) ? null : "expected a JSON object"),
+      "rubric-parse",
     );
-    const parsed = JSON.parse(text) as ParsedRubric;
 
     // Minimal structural validation before handing it to the UI.
     const rubric: ParsedRubric = {

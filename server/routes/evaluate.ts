@@ -3,8 +3,7 @@
 import type { Request, Response } from "express";
 
 import {
-  chatCompletion,
-  generateWithRetry,
+  chatJson,
   getModel,
   jsonSchemaFormat,
 } from "@/lib/openrouter";
@@ -257,15 +256,21 @@ export async function evaluateHandler(req: Request, res: Response) {
     console.info(
       `[agent:presentation-evaluate] step=calling-llm model=${getModel()} promptChars=${prompt.length}`,
     );
-    const text = await generateWithRetry(() =>
-      chatCompletion({
+    const scorecard = await chatJson<Scorecard>(
+      {
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         maxTokens: 8192,
         responseFormat: jsonSchemaFormat("presentation_scorecard", SCORECARD_SCHEMA),
-      }),
+      },
+      (s) =>
+        !s || typeof s !== "object"
+          ? "expected a JSON object"
+          : typeof s.overallScore !== "number"
+            ? "overallScore must be a number"
+            : null,
+      "presentation-evaluate",
     );
-    const scorecard = JSON.parse(text) as Scorecard;
     console.info(
       `[agent:presentation-evaluate] step=scorecard-generated overallScore=${scorecard.overallScore} grade=${scorecard.grade}`,
     );

@@ -104,7 +104,13 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
   if (model.includes("deepseek")) body.reasoning_effort = "none";
   if (options.temperature !== undefined) body.temperature = options.temperature;
   if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
-  if (options.responseFormat) body.response_format = options.responseFormat;
+  if (options.responseFormat?.type === "json_schema") {
+    // JSON mode with the shape in the prompt (the club pattern); routes validate the result themselves.
+    body.response_format = { type: "json_object" };
+    body.messages = withShape(options.messages, options.responseFormat.json_schema.schema);
+  } else if (options.responseFormat) {
+    body.response_format = options.responseFormat;
+  }
 
   const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
@@ -140,6 +146,67 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
     throw new OpenRouterError("OpenRouter returned an empty response.", 502);
   }
   return content;
+}
+
+/** Appends "reply with JSON in this shape" to the last user message (text or parts). */
+function withShape(messages: ChatMessage[], schema: Record<string, unknown>): ChatMessage[] {
+  const note = `Reply with ONE JSON object and nothing else. It must match this JSON Schema (every required field present):\n${JSON.stringify(schema)}`;
+  const last = messages.map((m) => m.role).lastIndexOf("user");
+  return messages.map((m, i) => {
+    if (i !== last) return m;
+    if (typeof m.content === "string") return { ...m, content: `${m.content}\n\n${note}` };
+    return { ...m, content: [...m.content, { type: "text", text: note }] };
+  });
+}
+
+/** Strips a ```json fence the model sometimes wraps around JSON (Gemini does even in JSON mode). */
+export function stripJsonFences(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  return fenced ? fenced[1] : trimmed;
+}
+
+/** Parses a model reply as a JSON object: fences stripped, else the outermost {...}. Throws SyntaxError. */
+export function parseModelJson<T = unknown>(text: string): T {
+  const body = stripJsonFences(text);
+  try {
+    return JSON.parse(body) as T;
+  } catch (err) {
+    const start = body.indexOf("{");
+    const end = body.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(body.slice(start, end + 1)) as T;
+    throw err;
+  }
+}
+
+/**
+ * chatCompletion (with generateWithRetry) + parseModelJson + an optional check. A reply that doesn't parse or fails
+ * `check` (which returns a problem string, or null when fine) gets one more call that carries the problem.
+ */
+export async function chatJson<T>(
+  options: ChatOptions,
+  check: (value: T) => string | null = () => null,
+  label = "llm",
+): Promise<T> {
+  let messages = options.messages;
+  let problem = "";
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const text = await generateWithRetry(() => chatCompletion({ ...options, messages }));
+    try {
+      const value = parseModelJson<T>(text);
+      problem = check(value) ?? "";
+      if (!problem) return value;
+    } catch (err) {
+      problem = `the reply was not valid JSON (${err instanceof Error ? err.message.slice(0, 120) : "parse error"})`;
+    }
+    console.warn(`[agent:${label}] step=reply-rejected attempt=${attempt} reason="${problem.slice(0, 200)}"`);
+    messages = [
+      ...options.messages,
+      { role: "assistant", content: text.slice(0, 12_000) },
+      { role: "user", content: `That reply was not usable: ${problem}. Reply again with the complete JSON object only.` },
+    ];
+  }
+  throw new OpenRouterError(`The AI reply was not usable: ${problem}`, 502);
 }
 
 /**
