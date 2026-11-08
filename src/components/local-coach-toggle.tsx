@@ -24,7 +24,7 @@ export function LocalCoachToggle({ className }: { className?: string }) {
       title={
         on
           ? "Local coach is ON — scoring, questions and rubric parsing all stay on this device"
-          : "Cloud AI coaching — your transcript is scored by Gemini. Toggle ON to keep everything on-device"
+          : "Cloud AI coaching — your transcript is scored by the AI model. Toggle ON to keep everything on-device"
       }
       onClick={() => setOn(!on)}
       className={cn(

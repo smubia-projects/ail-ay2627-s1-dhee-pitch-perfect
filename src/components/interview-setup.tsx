@@ -82,7 +82,7 @@ export function InterviewSetup({
           Interview setup
         </CardTitle>
         <CardDescription>
-          Paste the job description, your resume, and company news — Gemini
+          Paste the job description, your resume, and company news — the AI
           generates 5 targeted questions with STAR pointers.
         </CardDescription>
       </CardHeader>

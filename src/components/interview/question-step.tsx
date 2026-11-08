@@ -121,7 +121,7 @@ export function QuestionStep({
                     : "border-ink-300 bg-ink-50 text-ink-700",
                 )}
               >
-                {engine === "gemini" ? "Gemini-generated" : "Local generator"}
+                {engine === "gemini" ? "AI-generated" : "Local generator"}
               </Badge>
             )}
             <Badge

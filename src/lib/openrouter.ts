@@ -9,13 +9,27 @@
 
 export const OPENROUTER_BASE_URL = ((process.env.API_BASE_URL || process.env.OPENROUTER_BASE_URL)?.trim() || "https://api.apiyi.com/v1").replace(/\/+$/, "");
 
-/** Default model: Gemini Flash handles JSON-schema output and native PDF input. */
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+/** Default model for every route (reads images, honours JSON mode). */
+const DEFAULT_MODEL = "deepseek-v4-1-flash-260910";
+/**
+ * Model for a request that carries a PDF (rubric parse with slides): deepseek-v4-1-flash-260910 rejects PDF parts
+ * (HTTP 400 "Invalid base64 image_url", 2026-11-08), Gemini reads them.
+ */
+const DEFAULT_PDF_MODEL = "gemini-3.5-flash-lite";
 
 /** Model for every AI route — `OPENROUTER_MODEL` env var, else the default. */
 export function getModel(): string {
   return (process.env.MODEL_NAME || process.env.OPENROUTER_MODEL)?.trim() || DEFAULT_MODEL;
 }
+
+/** `PDF_MODEL_NAME`, else the default PDF-capable model. */
+export function getPdfModel(): string {
+  return process.env.PDF_MODEL_NAME?.trim() || DEFAULT_PDF_MODEL;
+}
+
+const hasPdf = (messages: ChatMessage[]) =>
+  messages.some((m) => Array.isArray(m.content) &&
+    m.content.some((p) => p.type === "image_url" && p.image_url.url.startsWith("data:application/pdf")));
 
 /** Error carrying the upstream HTTP status (when there was one). */
 export class OpenRouterError extends Error {
@@ -81,10 +95,13 @@ export async function chatCompletion(options: ChatOptions): Promise<string> {
     );
   }
 
+  const model = hasPdf(options.messages) ? getPdfModel() : getModel();
   const body: Record<string, unknown> = {
-    model: getModel(),
+    model,
     messages: options.messages,
   };
+  // DeepSeek thinks before answering by default (about 2x slower); every route here has a visitor waiting.
+  if (model.includes("deepseek")) body.reasoning_effort = "none";
   if (options.temperature !== undefined) body.temperature = options.temperature;
   if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
   if (options.responseFormat) body.response_format = options.responseFormat;

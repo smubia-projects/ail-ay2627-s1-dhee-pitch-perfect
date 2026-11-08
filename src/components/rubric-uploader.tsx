@@ -205,7 +205,7 @@ export function RubricUploader({
         </CardTitle>
         <CardDescription>
           Upload slides (PDF/TXT/Markdown) and your custom grading rubric —
-          Gemini parses them into qualitative directives, hard telemetry
+          The AI parses them into qualitative directives, hard telemetry
           rules, and intentional-turn overrides.
         </CardDescription>
       </CardHeader>

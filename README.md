@@ -50,7 +50,7 @@ flowchart TD
     Cam --> R4
     UI --> R3
     R1 & R2 & R3 & R4 --> G
-    G -->|retry on 429/503| LLM[("apiyi · gemini-3.5-flash-lite")]
+    G -->|retry on 429/503| LLM[("apiyi · deepseek-v4-1-flash-260910<br/>(PDFs: gemini-3.5-flash-lite)")]
     G -->|no key / quota| OFF
     R1 & R2 & R3 & R4 --> S
     R1 & R2 & R3 & R4 --> P
@@ -113,7 +113,8 @@ API (`.env` locally, the `DOTENV` secret in production; see `.env.example`):
 | Variable | Purpose |
 | --- | --- |
 | `API_KEY` | OpenRouter key (required for AI features) |
-| `MODEL_NAME` | Model for every route, default `gemini-3.5-flash-lite` (must accept PDFs) |
+| `MODEL_NAME` | Model for every route, default `deepseek-v4-1-flash-260910` |
+| `PDF_MODEL_NAME` | Model for a request that sends a slide PDF, default `gemini-3.5-flash-lite` (DeepSeek rejects PDF input) |
 | `CORS_ORIGINS` | Comma-separated frontend origins (the Vercel URL) |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Shared rate-limit store |
 | `RATE_LIMIT_SCORE_MAX`, `RATE_LIMIT_GENERATE_QUESTIONS_MAX`, `RATE_LIMIT_EVALUATE_MAX`, `RATE_LIMIT_PARSE_RUBRIC_MAX` | Per-IP fallback limits |
@@ -137,7 +138,7 @@ Server console output is prefixed so each agent step is easy to follow while scr
 ```
 [agent:llm] retry attempt=2/4 delayMs=800 reason="503 Service Unavailable ..."
 [agent:interview-evaluate] step=received transcriptChars=1482 companyNewsChars=0 telemetry=ok
-[agent:interview-evaluate] step=calling-llm model=gemini-3.5-flash-lite promptChars=6211
+[agent:interview-evaluate] step=calling-llm model=deepseek-v4-1-flash-260910 promptChars=6211
 [agent:interview-evaluate] step=scorecard-generated overallScore=78 engine=gemini
 ```
 
